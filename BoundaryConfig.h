@@ -299,7 +299,7 @@ static void config_send_html() {
     );
 
     // Read current blanking timeout from EEPROM (stored as minutes, 0 = never)
-    uint8_t cur_blank = 0;
+    uint8_t cur_blank = 5;
     if (EEPROM.read(eeprom_addr(ADDR_CONF_BSET)) == CONF_OK_BYTE) {
         cur_blank = EEPROM.read(eeprom_addr(ADDR_CONF_DBLK));
     }
@@ -421,7 +421,7 @@ static void config_handle_save() {
     if (bw_val > 0) lora_bw = bw_val;
 
     int sf_val = config_server->arg("sf").toInt();
-    if (sf_val >= 6 && sf_val <= 12) lora_sf = sf_val;
+    if (sf_val >= 5 && sf_val <= 12) lora_sf = sf_val;
 
     int cr_val = config_server->arg("cr").toInt();
     if (cr_val >= 5 && cr_val <= 8) lora_cr = cr_val;
