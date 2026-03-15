@@ -54,24 +54,26 @@ This firmware was designed for the **Heltec WiFi LoRa 32 V4**. This board was ch
 The easiest way to flash a pre-built firmware. You only need Python 3 and a USB cable.
 
 ```bash
-# Install esptool (one time)
-pip install esptool
-
 # Clone this repo (or download just flash.py + the firmware binary)
 git clone https://github.com/jrl290/RTNode-HeltecV4.git
 cd RTNode-HeltecV4
 
 # Download latest firmware from GitHub Releases and flash
 # (auto-detects V3 vs V4 from flash size)
-python flash.py --download
+python flash.py
+
+# Optional: use your machine's installed esptool instead of the bundled copy
+python flash.py --use-system-esptool
 
 # Or specify board explicitly
-python flash.py --download --board v3
-python flash.py --download --board v4
+python flash.py --board v3
+python flash.py --board v4
 
 # Or flash a local binary
 python flash.py --file rtnode_heltec_v4.bin
 ```
+
+By default, `flash.py` uses the bundled `Release/esptool/esptool.py` for reproducible flashing. Only use `--use-system-esptool` if you explicitly want to override that with a host-installed esptool.
 
 The flash utility auto-detects whether a V3 or V4 is connected by querying the flash size (8MB = V3, 16MB = V4). You can override with `--board v3` or `--board v4`. It will list all available serial ports and prompt you to choose one. If no ports are detected, you may need to hold the **BOOT** button while pressing **RESET** to enter download mode.
 

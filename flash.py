@@ -7,11 +7,18 @@ No PlatformIO required — just Python 3 and a USB cable.
 
 By default, downloads the latest firmware from GitHub Releases (if newer than
 the local cache) and flashes the app partition only, preserving bootloader,
-partition table, NVS, and EEPROM settings.
+partition table, NVS, and EEPROM settings. For reproducible flashing, the
+script prefers the bundled esptool in Release/ over any host-installed copy.
 
 Usage:
     # Update firmware — V4 (default)
     python flash.py
+
+    # Legacy alias for an app-only update flow
+    python flash.py --update
+
+    # Use a host-installed esptool instead of the bundled copy
+    python flash.py --use-system-esptool
 
     # Update firmware — V3
     python flash.py --board v3
@@ -55,6 +62,7 @@ GITHUB_REPO     = "jrl290/RTNode-HeltecV4"
 
 # Runtime state (set automatically during main())
 _flash_mode_override = None   # CLI --flash-mode sets this; otherwise board profile wins
+_esptool_write_verify_support = {}
 
 # Flash addresses for ESP32-S3 Arduino framework
 BOOTLOADER_ADDR = 0x0000
@@ -316,27 +324,13 @@ def detect_board(port, esptool_cmd):
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def find_esptool():
-    """Find esptool — pip-installed, user-local, bundled, or PlatformIO's copy.
+def find_esptool(prefer_system=False):
+    """Find esptool, preferring repo-managed copies for reproducible flashing.
 
-    Prefer pip/pipx-installed esptool first (handles its own deps and is
-    usually the newest version), then fall back to the bundled script.
+    Default order is bundled Release/ copy, then PlatformIO's packaged copy,
+    then any host-installed esptool. Pass ``prefer_system=True`` to invert that
+    preference when a user explicitly wants their machine-wide installation.
     """
-    # 1. pip-installed esptool on PATH
-    if shutil.which("esptool.py"):
-        return ["esptool.py"]
-    if shutil.which("esptool"):
-        return ["esptool"]
-
-    # 2. Common user-local install locations (pip install --user)
-    for candidate in [
-        os.path.expanduser("~/.local/bin/esptool"),
-        os.path.expanduser("~/.local/bin/esptool.py"),
-    ]:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            print(f"  Found user-local esptool: {candidate}")
-            return [candidate]
-
     # Check if pyserial is available before using script-based esptool
     try:
         import serial  # noqa: F401
@@ -344,26 +338,69 @@ def find_esptool():
     except ImportError:
         has_pyserial = False
 
-    # 2. Bundled in Release/
     bundled = os.path.join(os.path.dirname(__file__), "Release", "esptool", "esptool.py")
-    if os.path.isfile(bundled) and has_pyserial:
-        return [sys.executable, bundled]
-
-    # 3. PlatformIO's esptool
     pio_esptool = os.path.expanduser(
         "~/.platformio/packages/tool-esptoolpy/esptool.py"
     )
-    if os.path.isfile(pio_esptool) and has_pyserial:
-        return [sys.executable, pio_esptool]
 
-    # 4. Bundled exists but pyserial is missing — tell the user
-    if os.path.isfile(bundled) and not has_pyserial:
+    repo_candidates = []
+    if has_pyserial:
+        if os.path.isfile(bundled):
+            repo_candidates.append(([sys.executable, bundled], f"bundled esptool: {bundled}"))
+        if os.path.isfile(pio_esptool):
+            repo_candidates.append(([sys.executable, pio_esptool], f"PlatformIO esptool: {pio_esptool}"))
+
+    system_candidates = []
+    if shutil.which("esptool.py"):
+        system_candidates.append((["esptool.py"], "system esptool.py from PATH"))
+    if shutil.which("esptool"):
+        system_candidates.append((["esptool"], "system esptool from PATH"))
+    for candidate in [
+        os.path.expanduser("~/.local/bin/esptool"),
+        os.path.expanduser("~/.local/bin/esptool.py"),
+    ]:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            system_candidates.append(([candidate], f"user-local esptool: {candidate}"))
+
+    search_order = system_candidates + repo_candidates if prefer_system else repo_candidates + system_candidates
+    for command, source in search_order:
+        print(f"  Found {source}")
+        return command
+
+    if (os.path.isfile(bundled) or os.path.isfile(pio_esptool)) and not has_pyserial:
         print("Found bundled esptool but pyserial is not installed.")
         print("Install it with:  pip install pyserial")
         print("Or install the standalone esptool:  pip install esptool")
         sys.exit(1)
 
     return None
+
+
+def esptool_supports_write_verify(esptool_cmd):
+    """Return True if this esptool build accepts ``write_flash --verify``.
+
+    esptool v5 removed ``--verify`` from write-flash, while older releases
+    still accept it. Probe once and cache the result so flashing can choose
+    the compatible verification path.
+    """
+    cache_key = tuple(esptool_cmd)
+    if cache_key in _esptool_write_verify_support:
+        return _esptool_write_verify_support[cache_key]
+
+    try:
+        result = subprocess.run(
+            esptool_cmd + ["write_flash", "-h"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        supported = "--verify" in output
+    except Exception:
+        supported = False
+
+    _esptool_write_verify_support[cache_key] = supported
+    return supported
 
 
 def find_serial_port():
@@ -712,8 +749,8 @@ def check_partition_table(port, esptool_cmd, baud=None):
     """Compare the device's partition table against the expected one.
 
     Returns:
-      True  — partition table matches (or no expected table to compare against)
-      False — partition table mismatch (device needs full flash)
+            True  — partition table matches (or no expected table to compare against)
+            False — partition table mismatch or unreadable state (device needs full flash)
     """
     expected_path = find_partitions()
     if not expected_path:
@@ -727,8 +764,7 @@ def check_partition_table(port, esptool_cmd, baud=None):
     device_data = read_device_partitions(port, esptool_cmd, baud)
     if device_data is None:
         print("  Could not read partition table from device")
-        # Can't verify — assume OK (user can always use --full)
-        return True
+        return False
 
     # Compare only the meaningful portion (both should be PARTITION_TABLE_SIZE)
     if device_data[:len(expected)] == expected:
@@ -750,7 +786,7 @@ def check_app_on_device(port, esptool_cmd, baud=None):
     Reads a small chunk from APP_ADDR (0x10000).  If the region is all 0xFF
     (erased flash), no app is present and the device needs a full flash.
 
-    Returns True if app firmware is detected, False if blank/absent.
+    Returns True if app firmware is detected, False if blank/absent or unreadable.
     """
     import tempfile
     if baud is None:
@@ -772,7 +808,7 @@ def check_app_on_device(port, esptool_cmd, baud=None):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             print("  Warning: Could not read app region from device")
-            return True  # assume app exists if we can't check
+            return False
         with open(tmp.name, "rb") as f:
             data = f.read()
         # All 0xFF means flash is blank — no app present
@@ -781,7 +817,7 @@ def check_app_on_device(port, esptool_cmd, baud=None):
         return True
     except Exception as e:
         print(f"  Warning: App check failed: {e}")
-        return True  # assume app exists if we can't check
+        return False
     finally:
         try:
             os.unlink(tmp.name)
@@ -822,6 +858,37 @@ def reset_to_bootloader(port):
     return True
 
 
+def verify_firmware(firmware_path, port, esptool_cmd, baud=None,
+                    flash_mode=None, no_hard_reset=False):
+    """Verify flashed firmware using esptool's dedicated verify command."""
+    if baud is None:
+        baud = BAUD_RATE()
+    flash_size = FLASH_SIZE()
+    mode = flash_mode or BOARD_FLASH_MODE()
+
+    is_merged = is_merged_binary(firmware_path)
+    flash_addr = f"0x{BOOTLOADER_ADDR:x}" if is_merged else f"0x{APP_ADDR:x}"
+    after_arg = "no_reset" if no_hard_reset else "hard_reset"
+
+    print("\nVerifying flashed firmware...")
+    cmd = esptool_cmd + [
+        "--chip", CHIP,
+        "--port", port,
+        "--baud", baud,
+        "--before", "no_reset",
+        "--after", after_arg,
+        "verify_flash",
+        "--flash_mode", mode,
+        "--flash_freq", FLASH_FREQ,
+        "--flash_size", flash_size,
+        flash_addr, firmware_path,
+    ]
+
+    print("Running: " + " ".join(cmd[-8:]))
+    result = subprocess.run(cmd)
+    return result.returncode == 0
+
+
 def flash_firmware(firmware_path, port, esptool_cmd, baud=None,
                    no_reset_before=False, verify=False,
                    flash_mode=None, no_hard_reset=False):
@@ -851,8 +918,10 @@ def flash_firmware(firmware_path, port, esptool_cmd, baud=None,
         flash_addr = f"0x{APP_ADDR:x}"
         print(f"  Detected: app-only binary -> flash at {flash_addr}")
 
+    inline_verify = verify and esptool_supports_write_verify(esptool_cmd)
+    post_write_verify = verify and not inline_verify
     before_arg = "no_reset" if no_reset_before else "default_reset"
-    after_arg  = "no_reset" if no_hard_reset else "hard_reset"
+    after_arg  = "no_reset" if (no_hard_reset or post_write_verify) else "hard_reset"
 
     cmd = esptool_cmd + [
         "--chip", CHIP,
@@ -866,13 +935,26 @@ def flash_firmware(firmware_path, port, esptool_cmd, baud=None,
         "--flash_freq", FLASH_FREQ,
         "--flash_size", flash_size,
     ]
-    if verify:
+    if inline_verify:
         cmd.append("--verify")
     cmd += [flash_addr, firmware_path]
 
     print("Running: " + " ".join(cmd[-8:]))
     result = subprocess.run(cmd)
-    return result.returncode == 0
+    if result.returncode != 0:
+        return False
+
+    if post_write_verify:
+        return verify_firmware(
+            firmware_path,
+            port,
+            esptool_cmd,
+            baud=baud,
+            flash_mode=mode,
+            no_hard_reset=no_hard_reset,
+        )
+
+    return True
 
 
 def _monitor_boot(port, timeout=8):
@@ -937,15 +1019,28 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python flash.py                         # Download latest & app-only update (V4)
-  python flash.py --board v3              # Download latest & app-only update (V3)
-  python flash.py --release v1.0.12       # Flash a specific release version
-  python flash.py --full                  # Full flash with merged binary
-  python flash.py --offline               # Use cached/local firmware only
-  python flash.py --file firmware.bin     # Flash a specific file
-  python flash.py --merge-only            # Build merged binary for release
-  python flash.py --port /dev/ttyACM0     # Specify serial port
-  python flash.py --erase                  # Erase flash, then full flash (auto-verify)
+  python flash.py
+      Download latest firmware and flash default board.
+  python flash.py --update
+      Legacy alias for an app-only update.
+  python flash.py --use-system-esptool
+      Prefer a host-installed esptool over the bundled Release copy.
+  python flash.py --board v3
+      Download latest firmware and flash a V3 board.
+  python flash.py --release v1.0.12
+      Flash a specific release tag.
+  python flash.py --full
+      Do a full flash with the merged binary.
+  python flash.py --offline
+      Use only cached or local firmware.
+  python flash.py --file firmware.bin
+      Flash a specific local binary.
+  python flash.py --merge-only
+      Build the merged release binary without flashing.
+  python flash.py --port /dev/ttyACM0
+      Use a specific serial port.
+  python flash.py --erase
+      Erase flash first, then do a full flash.
         """,
     )
     parser.add_argument("--board", choices=["v3", "v4"], default=None,
@@ -956,6 +1051,8 @@ Examples:
     parser.add_argument("--baud", "-b", default=None, help="Baud rate (board-specific default)")
     parser.add_argument("--release", "-r", default=None, metavar="TAG",
                         help="Flash a specific release version (e.g. v1.0.12)")
+    parser.add_argument("--update", action="store_true",
+                        help="Legacy alias for an app-only firmware update")
     parser.add_argument("--offline", action="store_true",
                         help="Skip online check — use cached or local firmware only")
     parser.add_argument("--merge-only", action="store_true",
@@ -964,17 +1061,28 @@ Examples:
                         help="Flash merged binary (bootloader + partitions + app) — overwrites everything")
     parser.add_argument("--erase", action="store_true",
                         help="Erase entire flash before writing (implies --full)")
+    parser.add_argument("--use-system-esptool", action="store_true",
+                        help="Use a host-installed esptool instead of the bundled Release copy")
     # Power-user override (not shown in --help)
     parser.add_argument("--flash-mode", default=None,
                         help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
+    if args.update and args.offline:
+        parser.error("--update cannot be combined with --offline")
+
+    if args.update:
+        print("Using legacy compatibility flag; default behavior already downloads and flashes the latest firmware unless --offline is set.")
+
     # Find esptool early — needed for both auto-detect and flashing
-    esptool_cmd = find_esptool()
+    esptool_cmd = find_esptool(prefer_system=args.use_system_esptool)
     if not esptool_cmd:
         print("Error: esptool not found!")
-        print("Install it with:  pip install esptool")
+        print("Expected one of:")
+        print("  1. Bundled Release/esptool/esptool.py with pyserial available")
+        print("  2. PlatformIO's packaged esptool")
+        print("  3. A host-installed esptool (pip install esptool)")
         sys.exit(1)
 
     # ── Board detection ─────────────────────────────────────────────────
