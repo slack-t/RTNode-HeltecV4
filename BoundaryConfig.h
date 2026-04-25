@@ -34,7 +34,7 @@ static bool config_portal_active = false;
 static WebServer* config_server = nullptr;
 static DNSServer* config_dns    = nullptr;
 
-static const char CONFIG_AP_SSID[] = "RNode-Boundary-Setup";
+static const char CONFIG_AP_SSID[] = "RTNode-Setup";
 static const uint16_t DNS_PORT = 53;
 static const uint16_t HTTP_PORT = 80;
 
@@ -114,7 +114,7 @@ static void config_send_html() {
     String html = F(
         "<!DOCTYPE html><html><head>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>RNode Boundary Setup</title>"
+        "<title>RTNode Setup</title>"
         "<style>"
         "body{font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;margin:0;padding:16px;}"
         "h1{color:#e94560;font-size:1.4em;margin:0 0 8px;}"
@@ -137,7 +137,7 @@ static void config_send_html() {
         ".node-hash code{font-family:monospace;font-size:0.95em;color:#7ecfff;"
         "word-break:break-all;letter-spacing:0.05em;}"
         "</style></head><body>"
-        "<h1>&#x1f4e1; RNode Boundary Node</h1>"
+        "<h1>&#x1f4e1; RTNode</h1>"
     );
 
     // ── Node public hash ──
