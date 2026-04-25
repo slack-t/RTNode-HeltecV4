@@ -190,7 +190,7 @@ inline bool boundary_read_double(int addr, double& out) {
     if (all_ff) return false;
     memcpy(&out, buf, sizeof(out));
     // Reject NaN / inf values that may slip in from corrupted EEPROM.
-    if (!(out == out) || out > 1e9 || out < -1e9) return false;
+    if (isnan(out) || out > 1e9 || out < -1e9) return false;
     return true;
 }
 

@@ -577,7 +577,7 @@ static void config_handle_save() {
         boundary_state.advert_lat = 0.0;
     } else {
         double lat_val = lat_arg.toDouble();
-        if (lat_val < -90.0 || lat_val > 90.0 || !(lat_val == lat_val)) {
+        if (lat_val < -90.0 || lat_val > 90.0 || isnan(lat_val)) {
             lat_val = 0.0;
         }
         boundary_state.advert_lat = lat_val;
@@ -586,7 +586,7 @@ static void config_handle_save() {
         boundary_state.advert_lon = 0.0;
     } else {
         double lon_val = lon_arg.toDouble();
-        if (lon_val < -180.0 || lon_val > 180.0 || !(lon_val == lon_val)) {
+        if (lon_val < -180.0 || lon_val > 180.0 || isnan(lon_val)) {
             lon_val = 0.0;
         }
         boundary_state.advert_lon = lon_val;
