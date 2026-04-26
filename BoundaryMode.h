@@ -97,7 +97,8 @@
 #define ADDR_CONF_ADVERT_LAT    0x11D // Latitude as IEEE-754 double (8 bytes, host byte order)
 #define ADDR_CONF_ADVERT_LON    0x125 // Longitude as IEEE-754 double (8 bytes, host byte order)
 #define ADDR_CONF_ADVERT_JITTER 0x12D // Randomize ~0.5 km offset flag (1 byte, 0x73 = enabled)
-// Total: 0x12E (302 bytes — extends beyond 256-byte CONFIG area into
+#define ADDR_CONF_NODE_NAME     0x12E // Node display name (33 bytes, null-terminated)
+// Total: 0x14F (335 bytes — extends beyond 256-byte CONFIG area into
 //         unused EEPROM gap; safe on ESP32 where EEPROM starts at 824)
 
 #define BOUNDARY_ENABLE_BYTE 0x73
@@ -134,6 +135,7 @@ struct BoundaryState {
     double   advert_lat;      // Latitude in decimal degrees (-90..90)
     double   advert_lon;      // Longitude in decimal degrees (-180..180)
     bool     advert_jitter;   // Randomize ~0.5 km offset for advertised coords
+    char     node_name[33];   // Human-readable name (empty = auto from node hash)
 
     // Runtime state
     bool     wifi_connected;
@@ -220,6 +222,7 @@ inline void boundary_load_config() {
         boundary_state.advert_lat = 0.0;
         boundary_state.advert_lon = 0.0;
         boundary_state.advert_jitter = false;
+        boundary_state.node_name[0] = '\0';
         // Mark as enabled since we're compiled with BOUNDARY_MODE
         boundary_state.enabled = true;
         return;
@@ -319,6 +322,12 @@ inline void boundary_load_config() {
 
         uint8_t advert_jitter_byte = EEPROM.read(config_addr(ADDR_CONF_ADVERT_JITTER));
         boundary_state.advert_jitter = (advert_jitter_byte == BOUNDARY_ENABLE_BYTE);
+
+        for (int i = 0; i < 32; i++) {
+            boundary_state.node_name[i] = EEPROM.read(config_addr(ADDR_CONF_NODE_NAME + i));
+            if (boundary_state.node_name[i] == (char)0xFF) boundary_state.node_name[i] = '\0';
+        }
+        boundary_state.node_name[32] = '\0';
     }
 
     // Reset runtime state
@@ -377,6 +386,10 @@ inline void boundary_save_config() {
     boundary_write_double(ADDR_CONF_ADVERT_LON, boundary_state.advert_lon);
     EEPROM.write(config_addr(ADDR_CONF_ADVERT_JITTER),
                  boundary_state.advert_jitter ? BOUNDARY_ENABLE_BYTE : 0x00);
+    for (int i = 0; i < 32; i++) {
+        EEPROM.write(config_addr(ADDR_CONF_NODE_NAME + i), boundary_state.node_name[i]);
+    }
+    EEPROM.write(config_addr(ADDR_CONF_NODE_NAME + 32), 0x00);
 
     EEPROM.write(config_addr(ADDR_CONF_APP_MARKER0), BOUNDARY_APP_MARKER0);
     EEPROM.write(config_addr(ADDR_CONF_APP_MARKER1), BOUNDARY_APP_MARKER1);

@@ -150,6 +150,19 @@ static void config_send_html() {
     html += F("</code></div>");
 
     html += F("<form method='POST' action='/save'>");
+
+    // ── Node Name Section ──
+    html += F(
+        "<h2>&#x1f3f7; Node Name</h2>"
+        "<p class='note'>A human-readable name for this node, shown in advertisements and on maps "
+        "such as <a href='https://rmap.world' target='_blank' style='color:#7ecfff'>rmap.world</a>. "
+        "Leave blank to auto-generate a name from the node hash.</p>"
+        "<label>Name</label>"
+        "<input name='node_name' maxlength='32' placeholder='e.g. My RNode' value='"
+    );
+    html += String(boundary_state.node_name);
+    html += F("'>");
+
     html += F(
         "<h2>&#x1f4f6; WiFi Network</h2>"
         "<label>WiFi</label>"
@@ -369,36 +382,6 @@ static void config_send_html() {
     html += F("<p class='note'>Decimal degrees, signed. North/East positive, South/West negative. "
               "Leave both blank to omit coordinates.</p>");
 
-    // Browser geolocation helper button. Geolocation may be blocked on
-    // plain HTTP origins by some browsers; the script reports an error
-    // inline if the request fails or is denied.
-    html += F(
-        "<button type='button' id='geo_btn' "
-        "style='width:100%;padding:10px;margin:4px 0 6px;background:#0f3460;"
-        "color:#fff;border:none;border-radius:4px;font-size:0.95em;cursor:pointer;'>"
-        "&#x1f4cd; Use Browser Location</button>"
-        "<p id='geo_status' class='note' style='min-height:1em;'></p>"
-        "<script>"
-        "(function(){"
-        "var btn=document.getElementById('geo_btn');"
-        "var st=document.getElementById('geo_status');"
-        "if(!btn)return;"
-        "btn.addEventListener('click',function(){"
-        "if(!('geolocation' in navigator)){"
-        "st.textContent='Geolocation not supported by this browser.';return;}"
-        "st.textContent='Requesting location\\u2026';"
-        "navigator.geolocation.getCurrentPosition(function(pos){"
-        "document.getElementById('advert_lat').value=pos.coords.latitude.toFixed(6);"
-        "document.getElementById('advert_lon').value=pos.coords.longitude.toFixed(6);"
-        "st.textContent='Location filled (\\u00b1'+Math.round(pos.coords.accuracy)+' m).';"
-        "},function(err){"
-        "st.textContent='Could not get location: '+err.message;"
-        "},{enableHighAccuracy:true,timeout:15000,maximumAge:0});"
-        "});"
-        "})();"
-        "</script>"
-    );
-
     html += F("<label>Randomize Offset</label>"
               "<select name='advert_jitter'>");
     html += F("<option value='0'");
@@ -593,6 +576,12 @@ static void config_handle_save() {
     }
 
     boundary_state.advert_jitter = (config_server->arg("advert_jitter").toInt() == 1);
+
+    // ── Node name ──
+    String node_name_arg = config_server->arg("node_name");
+    node_name_arg.trim();
+    memset(boundary_state.node_name, 0, sizeof(boundary_state.node_name));
+    strncpy(boundary_state.node_name, node_name_arg.c_str(), sizeof(boundary_state.node_name) - 1);
 
     // Save boundary config to EEPROM
     boundary_save_config();

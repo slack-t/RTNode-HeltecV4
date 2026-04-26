@@ -363,16 +363,22 @@ static RNS::Bytes advertise_build_info() {
         adv_mp_bin(packed, tid_hash.data(), tid_hash.size());
     }
 
-    // NAME (str) — discovery_name. Use the cached node hash hex prefix when no
-    // explicit name has been configured, so each node has a unique identifier
-    // visible on maps.
+    // NAME (str) — discovery_name. Use the user-configured node name when set,
+    // otherwise fall back to a prefix of the node hash hex so each node has a
+    // unique identifier visible on maps.
     {
         char name_buf[40];
-        const char* hex = (rtc_node_hash_magic == NODE_HASH_RTC_MAGIC && rtc_node_hash_hex[0] != '\0')
-                          ? rtc_node_hash_hex : "";
-        snprintf(name_buf, sizeof(name_buf), "RTNode-%.8s", hex[0] ? hex : "unknown");
+        const char* adv_name;
+        if (boundary_state.node_name[0] != '\0') {
+            adv_name = boundary_state.node_name;
+        } else {
+            const char* hex = (rtc_node_hash_magic == NODE_HASH_RTC_MAGIC && rtc_node_hash_hex[0] != '\0')
+                              ? rtc_node_hash_hex : "";
+            snprintf(name_buf, sizeof(name_buf), "RTNode-%.8s", hex[0] ? hex : "unknown");
+            adv_name = name_buf;
+        }
         adv_mp_key(packed, ADV_FIELD_NAME);
-        adv_mp_str(packed, name_buf);
+        adv_mp_str(packed, adv_name);
     }
 
     // LATITUDE / LONGITUDE (float64) — apply optional privacy jitter.
