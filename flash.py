@@ -227,16 +227,14 @@ def extract_app_from_merged(merged_path):
 
 
 def _find_in_platformio_or_release(build_path, release_name):
-    """Find a file in the PlatformIO build output or the bundled Release/ dir."""
-    # 1. PlatformIO build output
+    """Find a file in the PlatformIO build output.
+
+    The Release/ directory no longer ships pre-built boot component binaries.
+    All boot components come from PlatformIO build output.  Call
+    ensure_firmware_built() first to trigger a build when needed.
+    """
     if os.path.isfile(build_path):
         return build_path
-
-    # 2. Bundled in Release/
-    bundled = os.path.join(os.path.dirname(__file__), "Release", release_name)
-    if os.path.isfile(bundled):
-        return bundled
-
     return None
 
 # Forward-compatible aliases (these are now functions, not constants)
@@ -270,11 +268,6 @@ def find_boot_app0():
                 candidate = os.path.join(pio_dir, name, "tools", "partitions", "boot_app0.bin")
                 if os.path.isfile(candidate):
                     return candidate
-
-    # Bundled fallback
-    bundled = os.path.join(os.path.dirname(__file__), "Release", "boot_app0.bin")
-    if os.path.isfile(bundled):
-        return bundled
 
     return None
 
@@ -380,40 +373,48 @@ def detect_board(port, esptool_cmd):
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def find_esptool(prefer_system=False):
-    """Find esptool, preferring repo-managed copies for reproducible flashing.
+    """Find esptool, preferring the bundled standalone binary for reproducibility.
 
-    Default order is bundled Release/ copy, then PlatformIO's packaged copy,
-    then any host-installed esptool. Pass ``prefer_system=True`` to invert that
-    preference when a user explicitly wants their machine-wide installation.
+    Default search order:
+      1. Release/esptool/esptool  (standalone binary — no Python/pyserial needed)
+      2. PlatformIO packaged esptool.py  (dev environments)
+      3. Host-installed esptool (PATH / ~/.local/bin)
+
+    Pass ``prefer_system=True`` (--use-system-esptool) to move the host
+    installation to the front, useful when you want to use a newer system
+    esptool for debugging.
+
+    The standalone binary MUST remain first in repo_candidates.
     """
-    # Check if pyserial is available before using script-based esptool
+    # Check if pyserial is available — needed for script-based (*.py) fallbacks
     try:
         import serial  # noqa: F401
         has_pyserial = True
     except ImportError:
         has_pyserial = False
 
-    bundled = os.path.join(os.path.dirname(__file__), "Release", "esptool", "esptool.py")
+    # Platform-aware standalone binary name
+    exe_name   = "esptool.exe" if platform.system() == "Windows" else "esptool"
+    bundled_bin = os.path.join(os.path.dirname(__file__), "Release", "esptool", exe_name)
     pio_esptool = os.path.expanduser(
         "~/.platformio/packages/tool-esptoolpy/esptool.py"
     )
 
     repo_candidates = []
-    if has_pyserial:
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # DO NOT CHANGE THIS ORDER.
-        # The bundled Release/esptool is INTENTIONALLY first.
-        # It is pinned to a specific version for release reproducibility —
-        # users flashing from a release ZIP get the same esptool regardless
-        # of what is installed on their machine.
-        # PlatformIO esptool is a fallback only, for dev environments where
-        # the bundled copy is absent or broken.
-        # NEVER reorder these lines. NEVER "prefer" PlatformIO over bundled.
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        if os.path.isfile(bundled):
-            repo_candidates.append(([sys.executable, bundled], f"bundled esptool: {bundled}"))
-        if os.path.isfile(pio_esptool):
-            repo_candidates.append(([sys.executable, pio_esptool], f"PlatformIO esptool: {pio_esptool}"))
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # DO NOT CHANGE THIS ORDER.
+    # The bundled Release/esptool binary is INTENTIONALLY first.
+    # It is a platform-native standalone executable — no Python or pyserial
+    # required.  Users flashing from the release archive get a consistent,
+    # pinned esptool regardless of what is installed on their machine.
+    # PlatformIO esptool.py is a fallback for dev environments only.
+    # NEVER reorder these lines. NEVER "prefer" PlatformIO over bundled.
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    if os.path.isfile(bundled_bin) and os.access(bundled_bin, os.X_OK):
+        # Standalone binary — invoke directly, no Python interpreter prefix
+        repo_candidates.append(([bundled_bin], f"bundled esptool binary: {bundled_bin}"))
+    if has_pyserial and os.path.isfile(pio_esptool):
+        repo_candidates.append(([sys.executable, pio_esptool], f"PlatformIO esptool: {pio_esptool}"))
 
     system_candidates = []
     if shutil.which("esptool.py"):
@@ -432,10 +433,10 @@ def find_esptool(prefer_system=False):
         print(f"  Found {source}")
         return command
 
-    if (os.path.isfile(bundled) or os.path.isfile(pio_esptool)) and not has_pyserial:
-        print("Found bundled esptool but pyserial is not installed.")
+    if not has_pyserial and os.path.isfile(pio_esptool):
+        print("Found PlatformIO esptool.py but pyserial is not installed.")
         print("Install it with:  pip install pyserial")
-        print("Or install the standalone esptool:  pip install esptool")
+        print("Or place the standalone esptool binary at: Release/esptool/esptool")
         sys.exit(1)
 
     return None
@@ -753,12 +754,46 @@ def _do_merge(output_path, esptool_cmd, bootloader, partitions, boot_app0, firmw
     return True
 
 
+def ensure_firmware_built():
+    """Ensure PlatformIO firmware and boot components exist, building if needed.
+
+    Returns True if all build artifacts are available (existing or freshly
+    built), False if PlatformIO is not installed or the build fails.
+    """
+    firmware = FIRMWARE_BIN()
+    if os.path.isfile(firmware):
+        return True
+
+    print(f"\n  Firmware not found: {firmware}")
+    print(f"  Building with PlatformIO (env: {PIO_ENV()})...")
+
+    pio = shutil.which("pio") or shutil.which("platformio")
+    if not pio:
+        print("  Error: PlatformIO not found. Install from https://platformio.org")
+        return False
+
+    result = subprocess.run([pio, "run", "-e", PIO_ENV()],
+                            cwd=os.path.dirname(os.path.abspath(__file__)))
+    if result.returncode != 0:
+        print("  PlatformIO build failed.")
+        return False
+
+    if not os.path.isfile(firmware):
+        print(f"  Error: Build succeeded but firmware not found: {firmware}")
+        return False
+
+    print("  Build complete.")
+    return True
+
+
 def merge_firmware(output_path, esptool_cmd):
     """Merge bootloader + partitions + boot_app0 + app into a single binary.
 
-    Uses PlatformIO build output, falling back to bundled Release/ copies
-    for the boot components.
+    Uses PlatformIO build output.  Triggers a build automatically if the
+    firmware binary is not present.
     """
+    ensure_firmware_built()
+
     bootloader = find_bootloader()
     partitions = find_partitions()
     boot_app0  = BOOT_APP0_BIN
@@ -783,12 +818,14 @@ def merge_firmware(output_path, esptool_cmd):
 def auto_merge_app_binary(app_binary_path, esptool_cmd):
     """Auto-merge an app-only binary with boot components for a full flash.
 
-    Finds bootloader, partitions, and boot_app0 from PlatformIO build output
-    or the bundled Release/ directory, then merges them with the supplied
-    app binary into a temporary merged file.
+    Finds bootloader, partitions, and boot_app0 from PlatformIO build output.
+    Triggers a PlatformIO build automatically if firmware is not yet built,
+    since bootloader.bin and partitions.bin come from the same build.
 
     Returns the path to the merged binary on success, or None on failure.
     """
+    ensure_firmware_built()
+
     bootloader = find_bootloader()
     partitions = find_partitions()
     boot_app0  = BOOT_APP0_BIN
@@ -800,8 +837,7 @@ def auto_merge_app_binary(app_binary_path, esptool_cmd):
 
     if missing:
         print(f"Cannot auto-merge: missing {', '.join(missing)}")
-        print("Place them in the Release/ folder alongside flash.py, or")
-        print(f"build with PlatformIO: pio run -e {PIO_ENV()}")
+        print(f"Build with PlatformIO first: pio run -e {PIO_ENV()}")
         return None
 
     # Create merged binary next to the app binary
@@ -1187,8 +1223,8 @@ Examples:
     if not esptool_cmd:
         print("Error: esptool not found!")
         print("Expected one of:")
-        print("  1. Bundled Release/esptool/esptool.py with pyserial available")
-        print("  2. PlatformIO's packaged esptool")
+        print("  1. Bundled standalone binary: Release/esptool/esptool")
+        print("  2. PlatformIO's packaged esptool (with pyserial installed)")
         print("  3. A host-installed esptool (pip install esptool)")
         sys.exit(1)
 

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTNode Firmware Flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #5b8af5;
+      --accent-hi: #7ba3ff;
+      --success:   #4caf76;
+      --warn:      #e0a742;
+      --text:      #e2e4ef;
+      --muted:     #8a8fa8;
+      --radius:    10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+      line-height: 1.6;
+    }
+
+    main { max-width: 680px; margin: 0 auto; }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header { text-align: center; margin-bottom: 3rem; }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--muted); margin-top: 0.4rem; font-size: 0.95rem; }
+
+    /* ── Steps ──────────────────────────────────────────── */
+    .step { margin-bottom: 2.2rem; }
+    .step-label {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.8rem;
+    }
+    .step-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Board cards ────────────────────────────────────── */
+    .board-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+    @media (max-width: 480px) {
+      .board-grid { grid-template-columns: 1fr; }
+    }
+    .board-btn {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.9rem 0.5rem;
+      cursor: pointer;
+      color: var(--text);
+      text-align: center;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .board-btn:hover { border-color: var(--accent); }
+    .board-btn.active {
+      border-color: var(--accent);
+      background: #1c2340;
+    }
+    .board-btn .board-name {
+      display: block;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .board-btn .board-chip {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    .board-btn .board-tag {
+      display: inline-block;
+      margin-top: 0.5rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      background: rgba(91, 138, 245, 0.12);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+    .board-btn.active .board-tag {
+      background: rgba(91, 138, 245, 0.22);
+    }
+
+    /* ── Flash section ──────────────────────────────────── */
+    .flash-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem 1.6rem;
+    }
+    .flash-box p { font-size: 0.9rem; color: var(--muted); margin-bottom: 1.1rem; }
+
+    esp-web-install-button {
+      display: block;
+    }
+    esp-web-install-button::part(button) {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.6rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    esp-web-install-button::part(button):hover {
+      background: var(--accent-hi);
+    }
+    .selected-board {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 0.9rem;
+    }
+    .selected-board span { color: var(--text); font-weight: 600; }
+
+    /* ── Requirements ───────────────────────────────────── */
+    .req-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .req-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      font-size: 0.9rem;
+    }
+    .req-list li .icon { flex-shrink: 0; }
+    .req-list li .ok  { color: var(--success); }
+    .req-list li .warn { color: var(--warn); }
+
+    /* ── Flash size note ────────────────────────────────── */
+    details {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.8rem 1.1rem;
+      font-size: 0.88rem;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--muted);
+      list-style: none;
+      user-select: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "▶ "; font-size: 0.7em; }
+    details[open] summary::before { content: "▼ "; }
+    details p { margin-top: 0.7rem; color: var(--muted); line-height: 1.6; }
+    details code {
+      background: rgba(255,255,255,0.07);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.9em;
+    }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      margin-top: 3rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span>RT</span>Node Firmware Flasher</h1>
+    <p>Flash RTNode firmware directly from your browser &mdash; no Python or tools required.</p>
+  </header>
+
+  <!-- Step 1: Board selection -->
+  <section class="step">
+    <div class="step-label">Step 1 &mdash; Select your board</div>
+    <div class="board-grid">
+      <button class="board-btn active"
+              data-manifest="manifest-v3.json"
+              data-name="Heltec V3">
+        <span class="board-name">Heltec V3</span>
+        <span class="board-chip">ESP32-S3 &middot; 8 MB</span>
+        <span class="board-tag">DIO</span>
+      </button>
+      <button class="board-btn"
+              data-manifest="manifest-v4-8mb.json"
+              data-name="Heltec V4 (8 MB)">
+        <span class="board-name">Heltec V4</span>
+        <span class="board-chip">ESP32-S3 &middot; 8 MB &middot; PSRAM</span>
+        <span class="board-tag">QIO</span>
+      </button>
+      <button class="board-btn"
+              data-manifest="manifest-v4-16mb.json"
+              data-name="Heltec V4 (16 MB)">
+        <span class="board-name">Heltec V4</span>
+        <span class="board-chip">ESP32-S3 &middot; 16 MB &middot; PSRAM</span>
+        <span class="board-tag">QIO &middot; 16 MB</span>
+      </button>
+    </div>
+
+    <div style="margin-top:0.9rem;">
+      <details>
+        <summary>Which V4 flash size do I have?</summary>
+        <p>
+          Most Heltec WiFi LoRa 32 V4 boards ship with <strong>8 MB</strong> flash
+          (<code>ESP32-S3FH4R2</code> module label). The 16 MB variant uses
+          <code>ESP32-S3R8</code> or similar and is less common. If unsure, pick
+          <strong>Heltec V4 (8 MB)</strong>. A wrong flash-size selection will
+          cause the flash to fail safely &mdash; it won&rsquo;t brick the device.
+        </p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Step 2: Flash -->
+  <section class="step">
+    <div class="step-label">Step 2 &mdash; Connect &amp; install</div>
+    <div class="flash-box">
+      <p>Plug your device into USB, then click the button below. You&rsquo;ll be
+         prompted to select the serial port in a browser dialog.</p>
+
+      <esp-web-install-button id="install-btn" manifest="manifest-v3.json">
+      </esp-web-install-button>
+
+      <div class="selected-board">
+        Selected: <span id="selected-name">Heltec V3</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Requirements -->
+  <section class="step">
+    <div class="step-label">Requirements</div>
+    <ul class="req-list">
+      <li>
+        <span class="icon ok">&#10003;</span>
+        <span>Google Chrome 89+ or Microsoft Edge &mdash; Web Serial API required
+          (Firefox and Safari are not supported)</span>
+      </li>
+      <li>
+        <span class="icon ok">&#10003;</span>
+        <span>USB cable connected to your RTNode device</span>
+      </li>
+      <li>
+        <span class="icon ok">&#10003;</span>
+        <span>No Python, esptool, or PlatformIO installation needed</span>
+      </li>
+      <li>
+        <span class="icon warn">&#9888;</span>
+        <span>On Linux, you may need to add your user to the <code>dialout</code>
+          group: <code>sudo usermod -a -G dialout $USER</code> (then log out and
+          back in)</span>
+      </li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <p>
+    RTNode Firmware &mdash;
+    <a href="https://github.com/jrl290/RTNode-HeltecV4" target="_blank" rel="noopener">
+      GitHub
+    </a>
+    &middot;
+    Powered by
+    <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">
+      ESP Web Tools
+    </a>
+  </p>
+</footer>
+
+<script>
+  const installBtn  = document.getElementById('install-btn');
+  const selectedLbl = document.getElementById('selected-name');
+
+  document.querySelectorAll('.board-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.board-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      installBtn.setAttribute('manifest', btn.dataset.manifest);
+      selectedLbl.textContent = btn.dataset.name;
+    });
+  });
+</script>
+</body>
+</html>

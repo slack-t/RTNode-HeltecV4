@@ -12,6 +12,13 @@ rtnode_heltec_v3.bin
 Release/*.hex
 Release/*.zip
 Release/*.json
+# Pre-built firmware artifacts are no longer committed — firmware ships as a
+# release archive (rtnode_firmware.zip). Build components live in .pio/build/.
+Release/*.bin
+# The standalone esptool binary is platform-specific and not committed to git.
+# Place it at Release/esptool/esptool (macOS/Linux) or Release/esptool/esptool.exe (Windows).
+Release/esptool/esptool
+Release/esptool/esptool.exe
 Console/build
 build/*
 .pio/*
