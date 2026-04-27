@@ -100,6 +100,15 @@ extern SPIClass SPI;
 
 #define MAX_PKT_LENGTH 255
 
+#if HAS_LORA_PA && LORA_PA_GC1109 && LORA_PA_KCT8103L
+  // Heltec V4 RF front-end auto-detection state.
+  // V4.2 boards use a GC1109 PA; V4.3 boards use a KCT8103L PA. The two
+  // ICs share the CSD enable pin (GPIO2) but differ in their internal pull
+  // and TX/RX control method. Detection happens on first init.
+  bool sx126x_fem_detected   = false;
+  bool sx126x_is_kct8103l    = false;
+#endif
+
 sx126x::sx126x() :
   _spiSettings(16E6, MSBFIRST, SPI_MODE0),
   _ss(LORA_DEFAULT_SS_PIN), _reset(LORA_DEFAULT_RESET_PIN), _dio0(LORA_DEFAULT_DIO0_PIN), _busy(LORA_DEFAULT_BUSY_PIN), _rxen(LORA_DEFAULT_RXEN_PIN),
@@ -345,30 +354,50 @@ int sx126x::begin(long frequency) {
 
   #if HAS_LORA_PA
     #if LORA_PA_GC1109
-      // Enable Vfem_ctl for supply to
-      // PA power net.
+      // Enable Vfem_ctl for supply to PA power net.
+      // Shared between GC1109 (V4.2) and KCT8103L (V4.3) FEMs.
       pinMode(LORA_PA_PWR_EN, OUTPUT);
       digitalWrite(LORA_PA_PWR_EN, HIGH);
 
-      // Enable PA LNA and TX standby
+      #if LORA_PA_KCT8103L
+        // ---- Auto-detect FEM type (V4.2 vs V4.3) ----
+        // The two FEMs differ in the internal pull on the CSD pin (GPIO2):
+        //   GC1109   CSD has internal pull-down -> reads LOW
+        //   KCT8103L CSD has internal pull-up   -> reads HIGH
+        // Detection is performed once on first init.
+        if (!sx126x_fem_detected) {
+          pinMode(LORA_PA_CSD, INPUT);
+          delay(1);
+          sx126x_is_kct8103l = (digitalRead(LORA_PA_CSD) == HIGH);
+          sx126x_fem_detected = true;
+        }
+      #endif
+
+      // Enable PA / LNA: CSD HIGH for both FEM types.
       pinMode(LORA_PA_CSD, OUTPUT);
       digitalWrite(LORA_PA_CSD, HIGH);
 
-      // Keep PA CPS low until actual
-      // transmit. Does it save power?
-      // Who knows? Will have to measure.
-      // Note from the future: Nope.
-      // Power consumption is the same,
-      // and turning it on and off is
-      // not something that it likes.
-      // Keeping it high for now.
-      pinMode(LORA_PA_CPS, OUTPUT);
-      digitalWrite(LORA_PA_CPS, HIGH);
+      #if LORA_PA_KCT8103L
+        if (sx126x_is_kct8103l) {
+          // V4.3 KCT8103L: CTX (GPIO5) selects RX-LNA (LOW) vs TX (HIGH).
+          // Start in RX-LNA mode. CPS is wired directly to DIO2 and is
+          // controlled automatically by the SX1262 RF switch.
+          pinMode(LORA_PA_CTX, OUTPUT);
+          digitalWrite(LORA_PA_CTX, LOW);
+        } else
+      #endif
+      {
+        // V4.2 GC1109: CPS controls PA mode. Keep PA CPS low until actual
+        // transmit. Does it save power? Who knows? Will have to measure.
+        // Note from the future: Nope. Power consumption is the same, and
+        // turning it on and off is not something that it likes. Keeping it
+        // high for now.
+        pinMode(LORA_PA_CPS, OUTPUT);
+        digitalWrite(LORA_PA_CPS, HIGH);
 
-      // On Heltec V4, the PA CTX pin
-      // is driven by the SX1262 DIO2
-      // pin directly, so we do not
-      // need to manually raise this.
+        // On Heltec V4.2, the PA CTX pin is driven by the SX1262 DIO2 pin
+        // directly, so we do not need to manually raise this.
+      }
     #endif
   #endif
 
@@ -380,11 +409,14 @@ void sx126x::end() { sleep(); SPI.end(); _preinit_done = false; }
 int sx126x::beginPacket(int implicitHeader) {
   #if HAS_LORA_PA
     #if LORA_PA_GC1109
-      // Enable PA CPS for transmit
-      // digitalWrite(LORA_PA_CPS, HIGH);
-      // Disabled since we're keeping it
-      // on permanently as long as the
-      // radio is powered up.
+      #if LORA_PA_KCT8103L
+        if (sx126x_is_kct8103l) {
+          // V4.3 KCT8103L: drive CTX HIGH to select TX path / full PA.
+          digitalWrite(LORA_PA_CTX, HIGH);
+        }
+      #endif
+      // V4.2 GC1109: PA CPS is kept HIGH permanently, no toggle needed.
+      // (Toggling it on each packet causes LNA misbehaviour.)
     #endif
   #endif
 
@@ -597,13 +629,14 @@ void sx126x::onReceive(void(*callback)(int)){
 void sx126x::receive(int size) {
   #if HAS_LORA_PA
     #if LORA_PA_GC1109
-      // Disable PA CPS for receive
-      // digitalWrite(LORA_PA_CPS, LOW);
-      // That turned out to be a bad idea.
-      // The LNA goes wonky if it's toggled
-      // on and off too quickly. We'll keep
-      // it on permanently, as long as the
-      // radio is powered up.
+      #if LORA_PA_KCT8103L
+        if (sx126x_is_kct8103l) {
+          // V4.3 KCT8103L: drive CTX LOW to enable RX LNA path.
+          digitalWrite(LORA_PA_CTX, LOW);
+        }
+      #endif
+      // V4.2 GC1109: PA CPS is left HIGH permanently. Toggling it caused
+      // the LNA to go wonky, so we keep it on while the radio is powered.
     #endif
   #endif
 

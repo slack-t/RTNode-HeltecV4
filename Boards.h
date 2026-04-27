@@ -432,10 +432,18 @@
 
       #define LORA_LNA_GAIN  17
       #define LORA_LNA_GVT   12
-      #define LORA_PA_GC1109 true
+      // V4.2 (GC1109) and V4.3 (KCT8103L) FEM share these pins.
+      // FEM type is auto-detected at runtime in sx126x.cpp via the GPIO2
+      // (CSD) default pull level: GC1109 → LOW, KCT8103L → HIGH.
+      //   GC1109   : CSD=GPIO2 (enable, HIGH), CPS=GPIO46 (PA mode)
+      //   KCT8103L : CSD=GPIO2 (enable, HIGH), CTX=GPIO5  (TX/RX path)
+      //              CPS is wired to DIO2 (SX126X_DIO2_AS_RF_SWITCH).
+      #define LORA_PA_GC1109   true
+      #define LORA_PA_KCT8103L true
       #define LORA_PA_PWR_EN  7
       #define LORA_PA_CSD     2
       #define LORA_PA_CPS    46
+      #define LORA_PA_CTX     5
 
       #define PA_MAX_OUTPUT  28
       #define PA_GAIN_POINTS 22
