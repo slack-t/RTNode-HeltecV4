@@ -239,6 +239,24 @@
       font-size: 0.9em;
     }
 
+    /* ── Button row ───────────────────────────────────────── */
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 0.25rem;
+    }
+    .flash-btn.secondary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .flash-btn.secondary:hover:not(:disabled) {
+      background: var(--border);
+      color: var(--text);
+    }
+
     /* ── Footer ─────────────────────────────────────────── */
     footer {
       text-align: center;
@@ -257,9 +275,19 @@
     <p>Flash RTNode firmware directly from your browser &mdash; no Python or tools required.</p>
   </header>
 
-  <!-- Connect & Install (board auto-detected from chip features) -->
+  <!-- Step 1: Connect & Detect -->
   <section class="step">
-    <div class="step-label">Connect &amp; Install</div>
+    <div class="step-label">Step 1 &mdash; Connect &amp; Detect</div>
+    <div class="flash-box">
+      <p>Connect your RTNode via USB, then click <strong>Detect</strong> to identify the board automatically.</p>
+      <div id="detect-status" style="display:none"></div>
+      <button id="detect-btn" class="flash-btn">&#128268; Connect &amp; Detect</button>
+    </div>
+  </section>
+
+  <!-- Step 2: Flash -->
+  <section class="step">
+    <div class="step-label">Step 2 &mdash; Flash</div>
     <div class="flash-box">
 
       <!-- Mode toggle -->
@@ -269,22 +297,15 @@
           <span class="mode-sub">App only &mdash; settings preserved</span>
         </button>
         <button class="mode-btn" id="mode-full">
-          First-time install
-          <span class="mode-sub">Full flash &mdash; clears all settings</span>
+          Full install
+          <span class="mode-sub">Erases everything &mdash; bootloader &amp; all settings</span>
         </button>
       </div>
 
       <p id="flash-desc">
         Writes only the application region (0x10000).
         Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched.
-        Use this when your device already has RTNode firmware installed.
       </p>
-
-      <!-- Detection / status badge (hidden until connect) -->
-      <div id="detect-status" style="display:none"></div>
-
-      <!-- Flash button -->
-      <button id="flash-btn" class="flash-btn">&#9889; Connect &amp; Flash</button>
 
       <!-- Progress (hidden until flashing) -->
       <div id="progress-wrap" class="progress-wrap" style="display:none">
@@ -294,6 +315,11 @@
 
       <!-- Log (hidden until activity) -->
       <div id="log-area" class="log-area" style="display:none"></div>
+
+      <div class="btn-row">
+        <button id="flash-btn" class="flash-btn" disabled>&#9889; Flash Firmware</button>
+        <button id="redetect-btn" class="flash-btn secondary">&#8635; Re-detect</button>
+      </div>
 
     </div>
   </section>
@@ -342,9 +368,7 @@
 <script type="module">
   import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.4.6/bundle.js';
 
-  // ── Board firmware config ──────────────────────────────────────────────────
-  // Keyed by board string returned from detectBoard().
-  // Add new boards here — no hardcoded flash-size strings anywhere.
+  // ── Firmware config ────────────────────────────────────────────────────────
   const FIRMWARE = {
     v4: {
       label:      'Heltec V4 (PSRAM, QIO)',
@@ -362,10 +386,7 @@
     },
   };
 
-  // ── Detection — mirrors detect_board() in flash.py exactly ────────────────
-  // ESP32-S3 + PSRAM in features → V4
-  // ESP32-S3 + no PSRAM          → V3
-  // ESP32 (legacy)               → V3
+  // ── Detection — mirrors detect_board() in flash.py ─────────────────────────
   function detectBoard(chipName, features) {
     if (chipName.includes('ESP32-S3')) {
       const hasPsram = features.some(f => String(f).toUpperCase().includes('PSRAM'));
@@ -375,129 +396,156 @@
   }
 
   // ── UI refs ────────────────────────────────────────────────────────────────
-  const flashBtn      = document.getElementById('flash-btn');
-  const flashDesc     = document.getElementById('flash-desc');
-  const modeUpdate    = document.getElementById('mode-update');
-  const modeFull      = document.getElementById('mode-full');
-  const detectStatus  = document.getElementById('detect-status');
-  const progressWrap  = document.getElementById('progress-wrap');
-  const progressFill  = document.getElementById('progress-fill');
-  const progressPct   = document.getElementById('progress-pct');
-  const logArea       = document.getElementById('log-area');
+  const detectBtn    = document.getElementById('detect-btn');
+  const flashBtn     = document.getElementById('flash-btn');
+  const redetectBtn  = document.getElementById('redetect-btn');
+  const flashDesc    = document.getElementById('flash-desc');
+  const modeUpdate   = document.getElementById('mode-update');
+  const modeFull     = document.getElementById('mode-full');
+  const detectStatus = document.getElementById('detect-status');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressFill = document.getElementById('progress-fill');
+  const progressPct  = document.getElementById('progress-pct');
+  const logArea      = document.getElementById('log-area');
 
   let currentIsUpdate = true;
+  let transport  = null;
+  let loader     = null;
+  let detectedFw = null;
 
   const UPDATE_DESC = 'Writes only the application region (0x10000). ' +
-    'Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched. ' +
-    'Use this when your device already has RTNode firmware installed.';
-  const FULL_DESC = '\u26A0\uFE0F Writes the full image from offset 0x0, replacing bootloader, partition table, and app. ' +
-    'All existing settings will be erased. ' +
-    'Required when: the device is blank, has mismatched partition layout, or has no app installed.';
+    'Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched.';
+  const FULL_DESC = '\u26A0\uFE0F Writes the full image from offset 0x0 and erases the entire flash first. ' +
+    'Bootloader, partition table, app, and all saved settings will be wiped. ' +
+    'Use for first-time installs or when the partition layout has changed.';
 
   modeUpdate.addEventListener('click', () => {
-    modeUpdate.classList.add('active');
-    modeFull.classList.remove('active');
-    currentIsUpdate = true;
-    flashDesc.textContent = UPDATE_DESC;
+    modeUpdate.classList.add('active'); modeFull.classList.remove('active');
+    currentIsUpdate = true;  flashDesc.textContent = UPDATE_DESC;
   });
   modeFull.addEventListener('click', () => {
-    modeFull.classList.add('active');
-    modeUpdate.classList.remove('active');
-    currentIsUpdate = false;
-    flashDesc.textContent = FULL_DESC;
+    modeFull.classList.add('active'); modeUpdate.classList.remove('active');
+    currentIsUpdate = false; flashDesc.textContent = FULL_DESC;
   });
 
-  // ── Logging ────────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function log(msg) {
     logArea.style.display = 'block';
     logArea.textContent += msg + '\n';
     logArea.scrollTop = logArea.scrollHeight;
   }
-
-  function setBadge(kind, text) {
+  function setBadge(kind, html) {
     detectStatus.style.display = 'block';
-    detectStatus.innerHTML = `<div class="detect-badge ${kind}">${text}</div>`;
+    detectStatus.innerHTML = `<div class="detect-badge ${kind}">${html}</div>`;
   }
-
   function setProgress(pct) {
     progressWrap.style.display = 'block';
     progressFill.style.width = pct + '%';
     progressPct.textContent = Math.round(pct) + '%';
   }
-
-  // ── Terminal adapter for ESPLoader ─────────────────────────────────────────
   function makeTerminal() {
     return {
-      clean()           {},
-      writeLine(data)   { log(data); },
-      write(data)       { if (data.trim()) log(data.trim()); },
+      clean()         {},
+      writeLine(data) { log(data); },
+      write(data)     { if (data.trim()) log(data.trim()); },
     };
   }
+  async function doDisconnect() {
+    if (transport) { try { await transport.disconnect(); } catch (_) {} transport = null; }
+    loader = null; detectedFw = null;
+  }
 
-  // ── Main flash flow ────────────────────────────────────────────────────────
-  flashBtn.addEventListener('click', async () => {
+  // ── Step 1: Detect ─────────────────────────────────────────────────────────
+  detectBtn.addEventListener('click', async () => {
     if (!('serial' in navigator)) {
-      setBadge('err', '&#10007; Web Serial not supported — use Chrome or Edge');
+      setBadge('err', '&#10007; Web Serial not supported &mdash; use Chrome or Edge');
       return;
     }
-
+    await doDisconnect();
     flashBtn.disabled = true;
-    logArea.textContent = '';
-    detectStatus.style.display = 'none';
     progressWrap.style.display = 'none';
+    logArea.style.display = 'none'; logArea.textContent = '';
+    detectStatus.style.display = 'none';
+    detectBtn.disabled = true;
 
-    let port, transport, loader;
     try {
-      // 1. Port picker
-      port = await navigator.serial.requestPort();
-      transport = new Transport(port, false);
-
+      const port = await navigator.serial.requestPort();
+      transport  = new Transport(port, false);
       setBadge('info', '&#9881; Connecting&hellip;');
       log('Connecting to device...');
 
-      loader = new ESPLoader({
-        transport,
-        baudrate: 921600,
-        terminal: makeTerminal(),
-      });
-
-      // 2. Connect, detect chip, upload stub, change baud
+      loader = new ESPLoader({ transport, baudrate: 921600, terminal: makeTerminal() });
       await loader.main('default_reset');
 
-      // 3. Detect board — same logic as detect_board() in flash.py
       const chipName    = loader.chip.CHIP_NAME;
       const features    = await loader.chip.getChipFeatures(loader);
-      const flashSizeKb = await loader.getFlashSize();   // returns KB as number
+      const flashSizeKb = await loader.getFlashSize();
       const flashSize   = flashSizeKb >= 1024 ? (flashSizeKb / 1024) + 'MB' : flashSizeKb + 'KB';
       const boardKey    = detectBoard(chipName, features);
-      const fw        = FIRMWARE[boardKey];
+      detectedFw        = FIRMWARE[boardKey];
 
       log(`Chip:       ${chipName}`);
       log(`Features:   ${features.join(', ')}`);
       log(`Flash size: ${flashSize}`);
-      log(`Board:      ${fw.label}`);
+      log(`Board:      ${detectedFw.label}`);
 
-      setBadge('ok', `&#10003; Detected: ${fw.label} &mdash; Flash: ${flashSize}`);
+      setBadge('ok', `&#10003; ${detectedFw.label} &mdash; Flash: ${flashSize} &mdash; Ready to flash`);
+      flashBtn.disabled = false;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log('Error: ' + msg);
+      setBadge('err', '&#10007; ' + msg);
+      await doDisconnect();
+    } finally {
+      detectBtn.disabled = false;
+    }
+  });
 
-      // 4. Fetch firmware
+  // ── Re-detect ──────────────────────────────────────────────────────────────
+  redetectBtn.addEventListener('click', async () => {
+    await doDisconnect();
+    flashBtn.disabled = true;
+    progressWrap.style.display = 'none';
+    logArea.style.display = 'none'; logArea.textContent = '';
+    detectStatus.style.display = 'none';
+  });
+
+  // ── Step 2: Flash ──────────────────────────────────────────────────────────
+  flashBtn.addEventListener('click', async () => {
+    if (!loader || !detectedFw) {
+      setBadge('err', '&#10007; Detect your device first (Step 1).');
+      return;
+    }
+    flashBtn.disabled  = true;
+    detectBtn.disabled = true;
+    progressFill.style.width = '0%';
+    progressWrap.style.display = 'none';
+    logArea.textContent = ''; logArea.style.display = 'block';
+
+    try {
+      const fw     = detectedFw;
       const binUrl = currentIsUpdate ? fw.updateBin : fw.fullBin;
       const addr   = currentIsUpdate ? fw.updateAddr : fw.fullAddr;
-      log(`Fetching ${binUrl}...`);
+
+      log(`Mode:     ${currentIsUpdate ? 'Update (app only, settings preserved)' : 'Full install (erase all)'}`);
+      log(`Firmware: ${binUrl}`);
       const resp = await fetch(binUrl);
       if (!resp.ok) throw new Error(`Failed to fetch firmware: ${resp.status} ${resp.statusText}`);
-      const data = new Uint8Array(await resp.arrayBuffer());
-      log(`Firmware size: ${data.length.toLocaleString()} bytes`);
 
-      // 5. Flash
+      // esptool-js writeFlash requires a binary string, not Uint8Array
+      const bytes   = new Uint8Array(await resp.arrayBuffer());
+      const binData = Array.from(bytes, b => String.fromCharCode(b)).join('');
+      log(`Size:     ${bytes.length.toLocaleString()} bytes`);
+
       log('Flashing...');
       setProgress(0);
       await loader.writeFlash({
-        fileArray: [{ data, address: addr }],
-        flashSize:  'keep',
-        flashMode:  'keep',
-        flashFreq:  'keep',
-        eraseAll:   false,
-        compress:   true,
+        fileArray: [{ data: binData, address: addr }],
+        flashSize: 'keep',
+        flashMode: 'keep',
+        flashFreq: 'keep',
+        eraseAll:  !currentIsUpdate,
+        compress:  true,
         reportProgress(_idx, written, total) {
           setProgress((written / total) * 100);
         },
@@ -506,17 +554,16 @@
       setProgress(100);
       log('Flash complete. Rebooting...');
       await loader.after('hard_reset');
-
       setBadge('ok', '&#10003; Done! Device is rebooting.');
+      await doDisconnect();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log('Error: ' + msg);
       setBadge('err', '&#10007; ' + msg);
+      await doDisconnect();
     } finally {
-      if (transport) {
-        try { await transport.disconnect(); } catch (_) {}
-      }
-      flashBtn.disabled = false;
+      detectBtn.disabled = false;
+      flashBtn.disabled  = (loader === null);
     }
   });
 </script>
