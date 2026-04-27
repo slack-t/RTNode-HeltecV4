@@ -86,7 +86,7 @@
 
     /* ── Detect badge ────────────────────────────────────── */
     .detect-badge {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       gap: 0.5rem;
       border-radius: 6px;
@@ -275,12 +275,11 @@
     <p>Flash RTNode firmware directly from your browser &mdash; no Python or tools required.</p>
   </header>
 
-  <!-- Step 1: Connect & Detect -->
+  <!-- Step 1: Detect -->
   <section class="step">
-    <div class="step-label">Step 1 &mdash; Connect &amp; Detect</div>
+    <div class="step-label">Step 1 &mdash; Detect</div>
     <div class="flash-box">
       <p>Connect your RTNode via USB, then click <strong>Detect</strong> to identify the board automatically.</p>
-      <div id="detect-status" style="display:none"></div>
       <button id="detect-btn" class="flash-btn">&#128268; Connect &amp; Detect</button>
     </div>
   </section>
@@ -307,15 +306,6 @@
         Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched.
       </p>
 
-      <!-- Progress (hidden until flashing) -->
-      <div id="progress-wrap" class="progress-wrap" style="display:none">
-        <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
-        <div id="progress-pct" class="progress-pct">0%</div>
-      </div>
-
-      <!-- Log (hidden until activity) -->
-      <div id="log-area" class="log-area" style="display:none"></div>
-
       <div class="btn-row">
         <button id="flash-btn" class="flash-btn" disabled>&#9889; Flash Firmware</button>
         <button id="redetect-btn" class="flash-btn secondary">&#8635; Re-detect</button>
@@ -323,6 +313,19 @@
 
     </div>
   </section>
+
+  <!-- Console -->
+  <section class="step">
+    <div class="step-label">Console</div>
+    <div id="progress-wrap" class="progress-wrap" style="display:none">
+      <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+      <div id="progress-pct" class="progress-pct">0%</div>
+    </div>
+    <div id="log-area" class="log-area" style="display:none"></div>
+  </section>
+
+  <!-- Result -->
+  <div id="detect-status" style="display:none; margin-bottom: 2.2rem"></div>
 
   <!-- Requirements -->
   <section class="step">
