@@ -41,17 +41,36 @@ This firmware was designed for the **Heltec WiFi LoRa 32 V4**. This board was ch
 | **MCU** | ESP32-S3 (ESP32-S3FN8) | ESP32-S3 (ESP32-S3FH4R2) |
 | **Flash** | 8 MB | 16 MB |
 | **PSRAM** | None | 2 MB (QSPI) |
-| **Radio** | SX1262 | SX1262 + GC1109 PA |
+| **Radio** | SX1262 | SX1262 + PA (see below) |
 | **TX Power** | Up to 22 dBm | Up to 28 dBm |
 | **Display** | SSD1306 OLED 128×64 | SSD1306 OLED 128×64 |
 | **WiFi** | 2.4 GHz 802.11 b/g/n | 2.4 GHz 802.11 b/g/n |
 | **USB** | Native USB CDC | Native USB CDC |
 
+The Heltec V4 has two board revisions that use different front-end modules. The firmware auto-detects the FEM type at boot:
+
+| Revision | PA | TX control | RX control |
+|----------|----|-----------|------------|
+| V4.2 | GC1109 | CSD + CPS (CTX driven by DIO2) | CSD low |
+| V4.3 | KCT8103L | CSD + CTX (CPS driven by DIO2) | CSD + CTX low |
+
+A single `rtnode_heltec_v4` binary runs correctly on both revisions.
+
 ## Quick Start
 
-### Option A: Easy Flash (no PlatformIO required)
+### Option A: Web Flasher (easiest — no tools required)
 
-The easiest way to flash a pre-built firmware. You only need Python 3 and a USB cable.
+Open **[jrl290.github.io/RTNode-HeltecV4](https://jrl290.github.io/RTNode-HeltecV4/)** in Chrome or Edge, connect your RTNode via USB, and follow the two-step flow:
+
+1. **Detect** — click *Detect* and select your device from the browser's serial port picker. The flasher identifies the board (V3 or V4) automatically using PSRAM detection.
+2. **Flash** — choose *Update firmware* (app only, settings preserved) or *Full install* (erases everything — use for first-time installs), then click *Flash Firmware*.
+
+> Web Serial requires **Chrome 89+** or **Microsoft Edge**. Firefox and Safari are not supported.  
+> On Linux, add your user to the `dialout` group first: `sudo usermod -a -G dialout $USER` (then log out and back in).
+
+### Option B: flash.py (Python CLI)
+
+The easiest way to flash from the command line. You only need Python 3 and a USB cable.
 
 ```bash
 # Clone this repo (or download just flash.py + the firmware binary)
@@ -77,7 +96,7 @@ By default, `flash.py` uses the bundled `Release/esptool/esptool.py` for reprodu
 
 The flash utility auto-detects whether a V3 or V4 is connected by querying the flash size (8MB = V3, 16MB = V4). You can override with `--board v3` or `--board v4`. It will list all available serial ports and prompt you to choose one. If no ports are detected, you may need to hold the **BOOT** button while pressing **RESET** to enter download mode.
 
-### Option B: Build from Source (PlatformIO)
+### Option C: Build from Source (PlatformIO)
 
 For development or customization:
 
@@ -104,7 +123,7 @@ python flash.py                 # flash it (auto-detects board)
 pio device monitor -e rtnode_heltec_v4
 ```
 
-### Option C: Manual esptool Flash
+### Option D: Manual esptool Flash
 
 If you have the merged binary (`rtnode_heltec_v4.bin`), you can flash it with a single esptool command:
 
@@ -362,7 +381,8 @@ Set the transport node's **Local TCP Server** to **Enabled** (port 4242).
 | `BoundaryConfig.h` | Web-based captive portal for configuration |
 | `TcpInterface.h` | TCP interface for both backbone and local server (implements `RNS::InterfaceImpl`) with HDLC framing, unique naming, and 10 Mbps bitrate |
 | `Display.h` | OLED display layout — transport node status page |
-| `flash.py` | Flash utility — list serial ports, download from GitHub, merge & flash firmware |
+| `flash.py` | Python CLI flash utility — list serial ports, download from GitHub, merge & flash firmware |
+| `docs/index.html` | Browser-based web flasher — auto-detects board, two-step Detect + Flash UI, no Python required |
 | `Boards.h` | Board variant definitions for V3 and V4 |
 | `platformio.ini` | Build targets: `rtnode_heltec_v3`, `rtnode_heltec_v4`, and `rtnode_heltec_v4-local` |
 
