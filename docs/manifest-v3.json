@@ -1,13 +1,12 @@
 {
-  "name": "RTNode - Heltec V3",
-  "new_install_prompt_erase": true,
+  "name": "RTNode - Heltec V3 (Update)",
   "builds": [
     {
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "https://github.com/jrl290/RTNode-HeltecV4/releases/latest/download/rnode_firmware_heltec32v3_merged.bin",
-          "offset": 0
+          "path": "https://github.com/jrl290/RTNode-HeltecV4/releases/latest/download/rnode_firmware_heltec32v3.bin",
+          "offset": 65536
         }
       ]
     }
