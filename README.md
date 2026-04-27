@@ -88,13 +88,13 @@ git clone https://github.com/jrl290/RTNode-HeltecV4.git
 cd RTNode-HeltecV4
 
 # Build for V4
-pio run -e heltec_V4_boundary
+pio run -e heltec_V4_boundary_16mb
 
 # Build for V3
 pio run -e heltec_V3_boundary
 
 # Flash (via PlatformIO)
-pio run -e heltec_V4_boundary -t upload
+pio run -e heltec_V4_boundary_16mb -t upload
 
 # Or create a merged binary and flash with the utility
 python flash.py --merge-only    # creates merged firmware bin
@@ -364,7 +364,7 @@ Set the transport node's **Local TCP Server** to **Enabled** (port 4242).
 | `Display.h` | OLED display layout — transport node status page |
 | `flash.py` | Flash utility — list serial ports, download from GitHub, merge & flash firmware |
 | `Boards.h` | Board variant definitions for V3 and V4 |
-| `platformio.ini` | Build targets: `heltec_V3_boundary`, `heltec_V4_boundary`, and `heltec_V4_boundary-local` |
+| `platformio.ini` | Build targets: `heltec_V3_boundary`, `heltec_V4_boundary_16mb`, and `heltec_V4_boundary-local` |
 
 ### Library Patches
 
