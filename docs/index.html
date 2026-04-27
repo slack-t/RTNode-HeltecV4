@@ -465,10 +465,11 @@
       await loader.main('default_reset');
 
       // 3. Detect board — same logic as detect_board() in flash.py
-      const chipName = loader.chip.CHIP_NAME;
-      const features = await loader.chip.getChipFeatures(loader);
-      const flashSize = await loader.detectFlashSize();
-      const boardKey  = detectBoard(chipName, features);
+      const chipName    = loader.chip.CHIP_NAME;
+      const features    = await loader.chip.getChipFeatures(loader);
+      const flashSizeKb = await loader.getFlashSize();   // returns KB as number
+      const flashSize   = flashSizeKb >= 1024 ? (flashSizeKb / 1024) + 'MB' : flashSizeKb + 'KB';
+      const boardKey    = detectBoard(chipName, features);
       const fw        = FIRMWARE[boardKey];
 
       log(`Chip:       ${chipName}`);
