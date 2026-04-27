@@ -553,7 +553,7 @@
 
       setProgress(100);
       log('Flash complete. Rebooting...');
-      await loader.after('hard_reset');
+      await loader.hardReset();
       setBadge('ok', '&#10003; Done! Device is rebooting.');
       await doDisconnect();
     } catch (err) {
