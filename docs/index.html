@@ -290,9 +290,9 @@
       </div>
 
       <p id="flash-desc">
-        Plug your device into USB, then click the button below. Only the
-        application is flashed &mdash; bootloader, partition table, and all
-        saved settings (LoRa config, identity, WiFi) are left untouched.
+        Writes only the application region (0x10000).
+        Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched.
+        Use this when your device already has RTNode firmware installed.
       </p>
 
       <esp-web-install-button id="install-btn" manifest="manifest-v3.json">
@@ -361,12 +361,12 @@
   let currentBoard    = 'manifest-v3.json';
   let currentIsUpdate = true;
 
-  const UPDATE_DESC = "Plug your device into USB, then click the button below. Only the " +
-    "application is flashed \u2014 bootloader, partition table, and all " +
-    "saved settings (LoRa config, identity, WiFi) are left untouched.";
-  const FULL_DESC = "\u26A0\uFE0F First-time install: the full firmware image is written from offset 0x0. " +
-    "This is required for new devices or to recover a bricked node. " +
-    "All existing settings will be erased.";
+  const UPDATE_DESC = "Writes only the application region (0x10000). " +
+    "Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched. " +
+    "Use this when your device already has RTNode firmware installed.";
+  const FULL_DESC = "\u26A0\uFE0F Writes the full image from offset 0x0, replacing bootloader, partition table, and app. " +
+    "All existing settings will be erased. " +
+    "Required when: the device is blank, has mismatched partition layout, or has no app installed.";
 
   function updateButton() {
     const manifests = BOARDS[currentBoard];
