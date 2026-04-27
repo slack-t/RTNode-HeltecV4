@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RTNode Firmware Flasher</title>
-  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -63,56 +62,90 @@
       background: var(--border);
     }
 
-    /* ── Board cards ────────────────────────────────────── */
-    .board-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.75rem;
-    }
-    @media (max-width: 480px) {
-      .board-grid { grid-template-columns: 1fr; }
-    }
-    .board-btn {
-      background: var(--surface);
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      padding: 0.9rem 0.5rem;
-      cursor: pointer;
-      color: var(--text);
-      text-align: center;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .board-btn:hover { border-color: var(--accent); }
-    .board-btn.active {
-      border-color: var(--accent);
-      background: #1c2340;
-    }
-    .board-btn .board-name {
-      display: block;
+    /* ── Flash button ─────────────────────────────────── */
+    .flash-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.6rem;
+      font-size: 1rem;
       font-weight: 600;
-      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.15s;
     }
-    .board-btn .board-chip {
-      display: block;
-      font-size: 0.75rem;
-      color: var(--muted);
-      margin-top: 0.2rem;
-    }
-    .board-btn .board-tag {
-      display: inline-block;
-      margin-top: 0.5rem;
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      color: var(--accent);
-      background: rgba(91, 138, 245, 0.12);
-      border-radius: 4px;
-      padding: 1px 6px;
-    }
-    .board-btn.active .board-tag {
-      background: rgba(91, 138, 245, 0.22);
+    .flash-btn:hover:not(:disabled) { background: var(--accent-hi); }
+    .flash-btn:disabled {
+      background: var(--muted);
+      cursor: not-allowed;
+      opacity: 0.7;
     }
 
+    /* ── Detect badge ────────────────────────────────────── */
+    .detect-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-radius: 6px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.83rem;
+      font-weight: 600;
+      margin-bottom: 0.9rem;
+    }
+    .detect-badge.ok {
+      background: rgba(76, 175, 118, 0.12);
+      border: 1px solid rgba(76, 175, 118, 0.3);
+      color: var(--success);
+    }
+    .detect-badge.err {
+      background: rgba(229, 115, 115, 0.1);
+      border: 1px solid rgba(229, 115, 115, 0.3);
+      color: #e57373;
+    }
+    .detect-badge.info {
+      background: rgba(91, 138, 245, 0.1);
+      border: 1px solid rgba(91, 138, 245, 0.25);
+      color: var(--accent);
+    }
+
+    /* ── Progress ────────────────────────────────────────── */
+    .progress-wrap { margin: 0.75rem 0; }
+    .progress-track {
+      background: var(--border);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      background: var(--accent);
+      height: 100%;
+      width: 0%;
+      transition: width 0.15s;
+    }
+    .progress-pct {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.3rem;
+    }
+
+    /* ── Log area ────────────────────────────────────────── */
+    .log-area {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.55rem 0.8rem;
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 0.76rem;
+      color: var(--muted);
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
     /* ── Mode toggle ────────────────────────────────────── */
     .mode-toggle {
       display: flex;
@@ -160,32 +193,7 @@
     }
     .flash-box p { font-size: 0.9rem; color: var(--muted); margin-bottom: 1.1rem; }
 
-    esp-web-install-button {
-      display: block;
-    }
-    esp-web-install-button::part(button) {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 0.7rem 1.6rem;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    esp-web-install-button::part(button):hover {
-      background: var(--accent-hi);
-    }
-    .selected-board {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin-top: 0.9rem;
-    }
-    .selected-board span { color: var(--text); font-weight: 600; }
+
 
     /* ── Requirements ───────────────────────────────────── */
     .req-list {
@@ -249,32 +257,9 @@
     <p>Flash RTNode firmware directly from your browser &mdash; no Python or tools required.</p>
   </header>
 
-  <!-- Step 1: Board selection -->
+  <!-- Connect & Install (board auto-detected from chip features) -->
   <section class="step">
-    <div class="step-label">Step 1 &mdash; Select your board</div>
-    <div class="board-grid">
-      <button class="board-btn active"
-              data-manifest="manifest-v3.json"
-              data-name="Heltec V3">
-        <span class="board-name">Heltec V3</span>
-        <span class="board-chip">ESP32-S3 &middot; 8 MB</span>
-        <span class="board-tag">DIO</span>
-      </button>
-      <button class="board-btn"
-              data-manifest="manifest-v4-16mb.json"
-              data-name="Heltec V4">
-        <span class="board-name">Heltec V4</span>
-        <span class="board-chip">ESP32-S3 &middot; PSRAM</span>
-        <span class="board-tag">QIO</span>
-      </button>
-    </div>
-
-
-  </section>
-
-  <!-- Step 2: Mode + Flash -->
-  <section class="step">
-    <div class="step-label">Step 2 &mdash; Connect &amp; install</div>
+    <div class="step-label">Connect &amp; Install</div>
     <div class="flash-box">
 
       <!-- Mode toggle -->
@@ -295,12 +280,21 @@
         Use this when your device already has RTNode firmware installed.
       </p>
 
-      <esp-web-install-button id="install-btn" manifest="manifest-v3.json">
-      </esp-web-install-button>
+      <!-- Detection / status badge (hidden until connect) -->
+      <div id="detect-status" style="display:none"></div>
 
-      <div class="selected-board">
-        Selected: <span id="selected-name">Heltec V3</span>
+      <!-- Flash button -->
+      <button id="flash-btn" class="flash-btn">&#9889; Connect &amp; Flash</button>
+
+      <!-- Progress (hidden until flashing) -->
+      <div id="progress-wrap" class="progress-wrap" style="display:none">
+        <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+        <div id="progress-pct" class="progress-pct">0%</div>
       </div>
+
+      <!-- Log (hidden until activity) -->
+      <div id="log-area" class="log-area" style="display:none"></div>
+
     </div>
   </section>
 
@@ -339,63 +333,190 @@
     </a>
     &middot;
     Powered by
-    <a href="https://esphome.github.io/esp-web-tools/" target="_blank" rel="noopener">
-      ESP Web Tools
+    <a href="https://github.com/espressif/esptool-js" target="_blank" rel="noopener">
+      esptool-js
     </a>
   </p>
 </footer>
 
-<script>
-  const installBtn  = document.getElementById('install-btn');
-  const selectedLbl = document.getElementById('selected-name');
-  const flashDesc   = document.getElementById('flash-desc');
-  const modeUpdate  = document.getElementById('mode-update');
-  const modeFull    = document.getElementById('mode-full');
+<script type="module">
+  import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.4.6/bundle.js';
 
-  // Board → {update manifest, full manifest}
-  const BOARDS = {
-    'manifest-v3.json':      { update: 'manifest-v3.json',      full: 'manifest-v3-full.json' },
-    'manifest-v4-16mb.json': { update: 'manifest-v4-16mb.json', full: 'manifest-v4-full.json' },
+  // ── Board firmware config ──────────────────────────────────────────────────
+  // Keyed by board string returned from detectBoard().
+  // Add new boards here — no hardcoded flash-size strings anywhere.
+  const FIRMWARE = {
+    v4: {
+      label:      'Heltec V4 (PSRAM, QIO)',
+      updateBin:  'firmware/rtnode_heltec_v4.bin',
+      fullBin:    'firmware/rtnode_heltec_v4_merged.bin',
+      updateAddr: 0x10000,
+      fullAddr:   0x0,
+    },
+    v3: {
+      label:      'Heltec V3 (DIO)',
+      updateBin:  'firmware/rtnode_heltec_v3.bin',
+      fullBin:    'firmware/rtnode_heltec_v3_merged.bin',
+      updateAddr: 0x10000,
+      fullAddr:   0x0,
+    },
   };
 
-  let currentBoard    = 'manifest-v3.json';
-  let currentIsUpdate = true;
-
-  const UPDATE_DESC = "Writes only the application region (0x10000). " +
-    "Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched. " +
-    "Use this when your device already has RTNode firmware installed.";
-  const FULL_DESC = "\u26A0\uFE0F Writes the full image from offset 0x0, replacing bootloader, partition table, and app. " +
-    "All existing settings will be erased. " +
-    "Required when: the device is blank, has mismatched partition layout, or has no app installed.";
-
-  function updateButton() {
-    const manifests = BOARDS[currentBoard];
-    installBtn.setAttribute('manifest', currentIsUpdate ? manifests.update : manifests.full);
-    flashDesc.textContent = currentIsUpdate ? UPDATE_DESC : FULL_DESC;
+  // ── Detection — mirrors detect_board() in flash.py exactly ────────────────
+  // ESP32-S3 + PSRAM in features → V4
+  // ESP32-S3 + no PSRAM          → V3
+  // ESP32 (legacy)               → V3
+  function detectBoard(chipName, features) {
+    if (chipName.includes('ESP32-S3')) {
+      const hasPsram = features.some(f => String(f).toUpperCase().includes('PSRAM'));
+      return hasPsram ? 'v4' : 'v3';
+    }
+    return 'v3';
   }
 
-  document.querySelectorAll('.board-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.board-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentBoard = btn.dataset.manifest;
-      selectedLbl.textContent = btn.dataset.name;
-      updateButton();
-    });
-  });
+  // ── UI refs ────────────────────────────────────────────────────────────────
+  const flashBtn      = document.getElementById('flash-btn');
+  const flashDesc     = document.getElementById('flash-desc');
+  const modeUpdate    = document.getElementById('mode-update');
+  const modeFull      = document.getElementById('mode-full');
+  const detectStatus  = document.getElementById('detect-status');
+  const progressWrap  = document.getElementById('progress-wrap');
+  const progressFill  = document.getElementById('progress-fill');
+  const progressPct   = document.getElementById('progress-pct');
+  const logArea       = document.getElementById('log-area');
+
+  let currentIsUpdate = true;
+
+  const UPDATE_DESC = 'Writes only the application region (0x10000). ' +
+    'Bootloader, partition table, and all saved settings (LoRa config, identity, WiFi) are left untouched. ' +
+    'Use this when your device already has RTNode firmware installed.';
+  const FULL_DESC = '\u26A0\uFE0F Writes the full image from offset 0x0, replacing bootloader, partition table, and app. ' +
+    'All existing settings will be erased. ' +
+    'Required when: the device is blank, has mismatched partition layout, or has no app installed.';
 
   modeUpdate.addEventListener('click', () => {
     modeUpdate.classList.add('active');
     modeFull.classList.remove('active');
     currentIsUpdate = true;
-    updateButton();
+    flashDesc.textContent = UPDATE_DESC;
   });
-
   modeFull.addEventListener('click', () => {
     modeFull.classList.add('active');
     modeUpdate.classList.remove('active');
     currentIsUpdate = false;
-    updateButton();
+    flashDesc.textContent = FULL_DESC;
+  });
+
+  // ── Logging ────────────────────────────────────────────────────────────────
+  function log(msg) {
+    logArea.style.display = 'block';
+    logArea.textContent += msg + '\n';
+    logArea.scrollTop = logArea.scrollHeight;
+  }
+
+  function setBadge(kind, text) {
+    detectStatus.style.display = 'block';
+    detectStatus.innerHTML = `<div class="detect-badge ${kind}">${text}</div>`;
+  }
+
+  function setProgress(pct) {
+    progressWrap.style.display = 'block';
+    progressFill.style.width = pct + '%';
+    progressPct.textContent = Math.round(pct) + '%';
+  }
+
+  // ── Terminal adapter for ESPLoader ─────────────────────────────────────────
+  function makeTerminal() {
+    return {
+      clean()           {},
+      writeLine(data)   { log(data); },
+      write(data)       { if (data.trim()) log(data.trim()); },
+    };
+  }
+
+  // ── Main flash flow ────────────────────────────────────────────────────────
+  flashBtn.addEventListener('click', async () => {
+    if (!('serial' in navigator)) {
+      setBadge('err', '&#10007; Web Serial not supported — use Chrome or Edge');
+      return;
+    }
+
+    flashBtn.disabled = true;
+    logArea.textContent = '';
+    detectStatus.style.display = 'none';
+    progressWrap.style.display = 'none';
+
+    let port, transport, loader;
+    try {
+      // 1. Port picker
+      port = await navigator.serial.requestPort();
+      transport = new Transport(port, false);
+
+      setBadge('info', '&#9881; Connecting&hellip;');
+      log('Connecting to device...');
+
+      loader = new ESPLoader({
+        transport,
+        baudrate: 921600,
+        terminal: makeTerminal(),
+      });
+
+      // 2. Connect, detect chip, upload stub, change baud
+      await loader.main('default_reset');
+
+      // 3. Detect board — same logic as detect_board() in flash.py
+      const chipName = loader.chip.CHIP_NAME;
+      const features = await loader.chip.getChipFeatures(loader);
+      const flashSize = await loader.detectFlashSize();
+      const boardKey  = detectBoard(chipName, features);
+      const fw        = FIRMWARE[boardKey];
+
+      log(`Chip:       ${chipName}`);
+      log(`Features:   ${features.join(', ')}`);
+      log(`Flash size: ${flashSize}`);
+      log(`Board:      ${fw.label}`);
+
+      setBadge('ok', `&#10003; Detected: ${fw.label} &mdash; Flash: ${flashSize}`);
+
+      // 4. Fetch firmware
+      const binUrl = currentIsUpdate ? fw.updateBin : fw.fullBin;
+      const addr   = currentIsUpdate ? fw.updateAddr : fw.fullAddr;
+      log(`Fetching ${binUrl}...`);
+      const resp = await fetch(binUrl);
+      if (!resp.ok) throw new Error(`Failed to fetch firmware: ${resp.status} ${resp.statusText}`);
+      const data = new Uint8Array(await resp.arrayBuffer());
+      log(`Firmware size: ${data.length.toLocaleString()} bytes`);
+
+      // 5. Flash
+      log('Flashing...');
+      setProgress(0);
+      await loader.writeFlash({
+        fileArray: [{ data, address: addr }],
+        flashSize:  'keep',
+        flashMode:  'keep',
+        flashFreq:  'keep',
+        eraseAll:   false,
+        compress:   true,
+        reportProgress(_idx, written, total) {
+          setProgress((written / total) * 100);
+        },
+      });
+
+      setProgress(100);
+      log('Flash complete. Rebooting...');
+      await loader.after('hard_reset');
+
+      setBadge('ok', '&#10003; Done! Device is rebooting.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log('Error: ' + msg);
+      setBadge('err', '&#10007; ' + msg);
+    } finally {
+      if (transport) {
+        try { await transport.disconnect(); } catch (_) {}
+      }
+      flashBtn.disabled = false;
+    }
   });
 </script>
 </body>
