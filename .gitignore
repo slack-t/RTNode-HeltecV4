@@ -8,6 +8,8 @@ rtnode_heltec_v4.bin
 rnodethv3_firmware.bin
 rtnode_heltecv3_firmware.bin
 rtnode_heltec_v3.bin
+# Allow web flasher firmware assets served via GitHub Pages
+!docs/firmware/*.bin
 .firmware_cache/
 Release/*.hex
 Release/*.zip
