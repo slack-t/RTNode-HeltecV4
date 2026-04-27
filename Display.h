@@ -66,6 +66,9 @@ struct BoundaryState {
     double   advert_lon;
     bool     advert_jitter;
     char     node_name[33];   // Human-readable name (empty = auto from node hash)
+    // Airtime / duty-cycle limits as fraction (0.0 = disabled, 0.01 = 1%).
+    float    st_airtime_limit; // ~15 second rolling window
+    float    lt_airtime_limit; // ~1 hour rolling window
     bool     wifi_connected;
     bool     tcp_connected;       // Backbone (WAN) connected
     bool     ap_tcp_connected;    // Local TCP server (LAN) has client

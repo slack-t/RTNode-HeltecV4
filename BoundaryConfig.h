@@ -309,6 +309,26 @@ static void config_send_html() {
     html += F(" dBm (with PA)</p>");
     #endif
 
+    // Airtime / duty-cycle limits — pause TX when measured airtime
+    // exceeds these thresholds. 0 = disabled. Range 0–25% with 0.1%
+    // resolution. Common preset: EU868 = 1% on the 1hr limit.
+    char st_al_str[16];
+    char lt_al_str[16];
+    dtostrf(boundary_state.st_airtime_limit * 100.0f, 1, 1, st_al_str);
+    dtostrf(boundary_state.lt_airtime_limit * 100.0f, 1, 1, lt_al_str);
+    html += F("<div class='row'>");
+    html += F("<div><label>15s limit (%)</label>"
+              "<input name='stal' type='number' step='0.1' min='0' max='25' value='");
+    html += String(st_al_str);
+    html += F("'></div>");
+    html += F("<div><label>1hr limit (%)</label>"
+              "<input name='ltal' type='number' step='0.1' min='0' max='25' value='");
+    html += String(lt_al_str);
+    html += F("'></div>");
+    html += F("</div>");
+    html += F("<p class='note'>Pause TX when measured LoRa airtime exceeds these limits. "
+              "0 = disabled. EU868 regulations suggest 1% on the 1hr limit.</p>");
+
     // ── IFAC (Interface Access Code) Section ──
     html += F(
         "<h2>&#x1f512; Network Access (IFAC)</h2>"
@@ -605,6 +625,28 @@ static void config_handle_save() {
 
     int txp_val = config_server->arg("txp").toInt();
     if (txp_val >= 2 && txp_val <= 30) lora_txp = txp_val;
+
+    // Airtime / duty-cycle limits. Empty / out-of-range / 0 = disabled.
+    // boundary_save_config() has already run above, so write the bytes
+    // directly here alongside the other LoRa parameters.
+    {
+        String stal_arg = config_server->arg("stal");
+        String ltal_arg = config_server->arg("ltal");
+        stal_arg.trim();
+        ltal_arg.trim();
+        float st_pct = stal_arg.length() ? (float)stal_arg.toFloat() : 0.0f;
+        float lt_pct = ltal_arg.length() ? (float)ltal_arg.toFloat() : 0.0f;
+        if (st_pct < 0.0f || isnan(st_pct)) st_pct = 0.0f;
+        if (lt_pct < 0.0f || isnan(lt_pct)) lt_pct = 0.0f;
+        if (st_pct > 25.0f) st_pct = 25.0f;
+        if (lt_pct > 25.0f) lt_pct = 25.0f;
+        boundary_state.st_airtime_limit = st_pct / 100.0f;
+        boundary_state.lt_airtime_limit = lt_pct / 100.0f;
+        uint8_t st_byte = (uint8_t)(st_pct * 10.0f + 0.5f);
+        uint8_t lt_byte = (uint8_t)(lt_pct * 10.0f + 0.5f);
+        EEPROM.write(config_addr(ADDR_CONF_ST_AL), st_byte);
+        EEPROM.write(config_addr(ADDR_CONF_LT_AL), lt_byte);
+    }
 
     // Save LoRa config to EEPROM (reuse existing eeprom_conf functions)
     // Write directly since hw_ready may not be set yet
