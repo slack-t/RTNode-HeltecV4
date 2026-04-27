@@ -184,6 +184,37 @@
     }
     .mode-btn.active .mode-sub { color: var(--muted); }
 
+    /* ── Version picker ──────────────────────────────────── */
+    .version-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.1rem;
+    }
+    .version-row label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .version-row select {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.45rem 2.2rem 0.45rem 0.75rem;
+      font-size: 0.85rem;
+      font-family: inherit;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath stroke='%238a8fa8' stroke-width='1.5' fill='none' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+    }
+    .version-row select:focus { outline: none; border-color: var(--accent); }
+    .version-row select:disabled { opacity: 0.5; cursor: not-allowed; }
+
     /* ── Flash section ──────────────────────────────────── */
     .flash-box {
       background: var(--surface);
@@ -289,6 +320,14 @@
     <div class="step-label">Step 2 &mdash; Flash</div>
     <div class="flash-box">
 
+      <!-- Version picker -->
+      <div class="version-row">
+        <label for="version-select">Version</label>
+        <select id="version-select">
+          <option value="latest">Latest (bundled)</option>
+        </select>
+      </div>
+
       <!-- Mode toggle -->
       <div class="mode-toggle">
         <button class="mode-btn active" id="mode-update">
@@ -371,22 +410,46 @@
   import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.4.6/bundle.js';
 
   // ── Firmware config ────────────────────────────────────────────────────────
+  const REPO = 'jrl290/RTNode-HeltecV4';
   const FIRMWARE = {
     v4: {
       label:      'Heltec V4 (PSRAM, QIO)',
-      updateBin:  'firmware/rtnode_heltec_v4.bin',
-      fullBin:    'firmware/rtnode_heltec_v4_merged.bin',
+      updateName: 'rtnode_heltec_v4.bin',
+      fullName:   'rtnode_heltec_v4_merged.bin',
       updateAddr: 0x10000,
       fullAddr:   0x0,
     },
     v3: {
       label:      'Heltec V3 (DIO)',
-      updateBin:  'firmware/rtnode_heltec_v3.bin',
-      fullBin:    'firmware/rtnode_heltec_v3_merged.bin',
+      updateName: 'rtnode_heltec_v3.bin',
+      fullName:   'rtnode_heltec_v3_merged.bin',
       updateAddr: 0x10000,
       fullAddr:   0x0,
     },
   };
+
+  function getBinUrl(fw, isUpdate) {
+    const name = isUpdate ? fw.updateName : fw.fullName;
+    const ver  = versionSelect.value;
+    return ver === 'latest'
+      ? `firmware/${name}`
+      : `https://github.com/${REPO}/releases/download/${ver}/${name}`;
+  }
+
+  // ── Load release versions from GitHub API ─────────────────────────────────
+  (async () => {
+    try {
+      const res  = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=15`);
+      if (!res.ok) return;
+      const releases = await res.json();
+      for (const r of releases) {
+        const opt = document.createElement('option');
+        opt.value       = r.tag_name;
+        opt.textContent = `${r.tag_name}${r.name && r.name !== r.tag_name ? ' — ' + r.name : ''}`;
+        versionSelect.appendChild(opt);
+      }
+    } catch (_) { /* network unavailable — latest (bundled) remains the only option */ }
+  })();
 
   // ── Detection — mirrors detect_board() in flash.py ─────────────────────────
   function detectBoard(chipName, features) {
@@ -400,6 +463,7 @@
   // ── UI refs ────────────────────────────────────────────────────────────────
   const detectBtn    = document.getElementById('detect-btn');
   const flashBtn     = document.getElementById('flash-btn');
+  const versionSelect = document.getElementById('version-select');
 
   const flashDesc    = document.getElementById('flash-desc');
   const modeUpdate   = document.getElementById('mode-update');
@@ -511,15 +575,18 @@
     }
     flashBtn.disabled  = true;
     detectBtn.disabled = true;
+    versionSelect.disabled = true;
     progressFill.style.width = '0%';
     progressWrap.style.display = 'none';
     logArea.textContent = ''; logArea.style.display = 'block';
 
     try {
       const fw     = detectedFw;
-      const binUrl = currentIsUpdate ? fw.updateBin : fw.fullBin;
+      const ver    = versionSelect.value;
+      const binUrl = getBinUrl(fw, currentIsUpdate);
       const addr   = currentIsUpdate ? fw.updateAddr : fw.fullAddr;
 
+      log(`Version:  ${ver}`);
       log(`Mode:     ${currentIsUpdate ? 'Update (app only, settings preserved)' : 'Full install (erase all)'}`);
       log(`Firmware: ${binUrl}`);
       const resp = await fetch(binUrl);
@@ -555,8 +622,9 @@
       setBadge('err', '&#10007; ' + msg);
       await doDisconnect();
     } finally {
-      detectBtn.disabled = false;
-      flashBtn.disabled  = (loader === null);
+      detectBtn.disabled  = false;
+      versionSelect.disabled = false;
+      flashBtn.disabled   = (loader === null);
     }
   });
 </script>
