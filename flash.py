@@ -92,11 +92,13 @@ BOARD_PROFILES = {
                 "pio_env":      "heltec_V4_boundary",
                 "build_dir":    ".pio/build/heltec_V4_boundary",
                 "firmware_bin": "rnode_firmware_heltec32v4_boundary_8mb.bin",
+                "merged_bin":   "rnode_firmware_heltec32v4_boundary_8mb_merged.bin",
             },
             "16MB": {
                 "pio_env":      "heltec_V4_boundary_16mb",
                 "build_dir":    ".pio/build/heltec_V4_boundary_16mb",
                 "firmware_bin": "rnode_firmware_heltec32v4_boundary_16mb.bin",
+                "merged_bin":   "rnode_firmware_heltec32v4_boundary_16mb_merged.bin",
             },
         },
     },
@@ -110,6 +112,7 @@ BOARD_PROFILES = {
                 "pio_env":      "heltec_V3_boundary",
                 "build_dir":    ".pio/build/heltec_V3_boundary",
                 "firmware_bin": "rnode_firmware_heltec32v3.bin",
+                "merged_bin":   "rnode_firmware_heltec32v3_merged.bin",
             },
         },
     },
@@ -138,6 +141,36 @@ def flash_variant():
 
 def BUILD_DIR():
     return flash_variant()["build_dir"]
+
+def MERGED_BIN():
+    """Return the path to the pre-merged binary in the PlatformIO build dir."""
+    merged = flash_variant().get("merged_bin")
+    if not merged:
+        return None
+    return os.path.join(BUILD_DIR(), merged)
+
+def find_local_firmware():
+    """Look for pre-built firmware binaries adjacent to flash.py.
+
+    This is the primary path when the user has extracted the release ZIP.
+    Prefers the pre-merged binary (full-flash-ready, no merge step needed)
+    over the app-only binary.
+
+    Returns the path if found, or None.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    fv = flash_variant()
+    # Prefer merged binary — works for both full flash and app-only update
+    merged = fv.get("merged_bin")
+    if merged:
+        path = os.path.join(script_dir, merged)
+        if os.path.isfile(path):
+            return path
+    # Fall back to app-only binary
+    path = os.path.join(script_dir, fv["firmware_bin"])
+    if os.path.isfile(path):
+        return path
+    return None
 
 def BOOTLOADER_BIN():
     return os.path.join(BUILD_DIR(), "bootloader.bin")
@@ -395,7 +428,15 @@ def find_esptool(prefer_system=False):
 
     # Platform-aware standalone binary name
     exe_name   = "esptool.exe" if platform.system() == "Windows" else "esptool"
-    bundled_bin = os.path.join(os.path.dirname(__file__), "Release", "esptool", exe_name)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Two possible locations for the standalone binary:
+    #   1. <script_dir>/esptool/esptool   — flat ZIP extraction (user-facing release)
+    #   2. <script_dir>/Release/esptool/esptool — git repo / nested ZIP
+    bundled_bin = (
+        os.path.join(script_dir, "esptool", exe_name)
+        if os.path.isfile(os.path.join(script_dir, "esptool", exe_name))
+        else os.path.join(script_dir, "Release", "esptool", exe_name)
+    )
     pio_esptool = os.path.expanduser(
         "~/.platformio/packages/tool-esptoolpy/esptool.py"
     )
@@ -700,20 +741,32 @@ def fetch_firmware(board_key, flash_size, release_tag=None):
                 f"  Available assets: {available}"
             )
 
-    # 4. Extract the correct variant from the archive
+    # 4. Extract the correct variant from the archive.
+    #    Prefer the pre-merged binary — it is self-contained (bootloader + partitions
+    #    + app in one file) so flash.py never needs PlatformIO or boot components.
+    #    Fall back to the app-only binary for backward compat with old archives.
     if not os.path.isfile(archive_path):
         return None, f"Archive not found: {archive_path}"
     try:
         with zipfile.ZipFile(archive_path) as zf:
             names = zf.namelist()
+            # Try merged binary first
+            merged_name = variant.get("merged_bin")
+            merged_path = _extracted_firmware_path(merged_name) if merged_name else None
+            if merged_name and merged_name in names:
+                with zf.open(merged_name) as src, open(merged_path, "wb") as dst:
+                    dst.write(src.read())
+                print(f"  Extracted {merged_name} (pre-merged, full-flash-ready)")
+                return merged_path, remote_tag
+            # Fall back to app-only binary
             if firmware_name not in names:
                 return None, (
-                    f"'{firmware_name}' not found in archive.\n"
+                    f"Neither '{merged_name or '?'}' nor '{firmware_name}' found in archive.\n"
                     f"  Archive contains: {names}"
                 )
             with zf.open(firmware_name) as src, open(extracted_path, "wb") as dst:
                 dst.write(src.read())
-        print(f"  Extracted {firmware_name}")
+            print(f"  Extracted {firmware_name}")
     except Exception as e:
         return None, f"Failed to extract firmware from archive: {e}"
 
@@ -1311,11 +1364,13 @@ Examples:
 
     # Determine firmware file
     firmware_path = None
-    # Local merged binary path: lives alongside the PIO build output
-    merged_fn    = os.path.join(fv["build_dir"],
-                                fv["firmware_bin"].replace(".bin", "_merged.bin"))
+    # Paths within the PlatformIO build output dir
+    merged_fn    = MERGED_BIN() or os.path.join(fv["build_dir"],
+                                                 fv["firmware_bin"].replace(".bin", "_merged.bin"))
     firmware_bin = FIRMWARE_BIN()
     pio_env      = PIO_ENV()
+    # Merged binary name shown in the variant (used for cache lookup)
+    merged_bin_name = fv.get("merged_bin")
 
     if args.file:
         firmware_path = args.file
@@ -1331,8 +1386,13 @@ Examples:
         return
 
     elif args.full and not args.release and args.offline:
-        # Full flash, offline: use local PIO build or existing merged binary
-        if os.path.isfile(firmware_bin):
+        # Full flash, offline: prefer release-ZIP firmware next to flash.py,
+        # then PIO build output, then firmware cache.
+        local = find_local_firmware()
+        if local:
+            firmware_path = local
+            print(f"Using local firmware: {local}")
+        elif os.path.isfile(firmware_bin):
             if os.path.isfile(merged_fn):
                 build_time = os.path.getmtime(firmware_bin)
                 merge_time = os.path.getmtime(merged_fn)
@@ -1348,19 +1408,25 @@ Examples:
         elif os.path.isfile(merged_fn):
             firmware_path = merged_fn
         else:
-            # Try cache
-            cached = _extracted_firmware_path(fv["firmware_bin"])
-            if os.path.isfile(cached):
-                firmware_path = cached
+            # Try firmware cache (previously downloaded)
+            cached_merged = _extracted_firmware_path(merged_bin_name) if merged_bin_name else None
+            cached_app    = _extracted_firmware_path(fv["firmware_bin"])
+            if cached_merged and os.path.isfile(cached_merged):
+                firmware_path = cached_merged
+                meta = _read_cache_meta()
+                print(f"Using cached firmware: {meta.get('tag', '?') if meta else '?'}")
+            elif os.path.isfile(cached_app):
+                firmware_path = cached_app
                 meta = _read_cache_meta()
                 print(f"Using cached firmware: {meta.get('tag', '?') if meta else '?'}")
             else:
                 print("No firmware found for full flash!")
                 print()
                 print("Options:")
-                print(f"  1. Build with PlatformIO first:  pio run -e {pio_env}")
-                print(f"  2. Run without --offline to download from GitHub")
-                print(f"  3. Specify a file:               python flash.py --board {_board} --file <path>")
+                print(f"  1. Use firmware from the release ZIP (extract next to flash.py)")
+                print(f"  2. Build with PlatformIO:  pio run -e {pio_env}")
+                print(f"  3. Run without --offline to download from GitHub")
+                print(f"  4. Specify a file:  python flash.py --board {_board} --file <path>")
                 sys.exit(1)
 
     else:
@@ -1374,15 +1440,24 @@ Examples:
                 print(f"\n  GitHub: {tag_or_err}")
                 print("  Falling back to local firmware...")
 
-        # Fall back to local PIO build output or cache
+        # Fall back to local firmware alongside flash.py, PIO build, or cache
         if not firmware_path:
-            if os.path.isfile(firmware_bin):
+            local = find_local_firmware()
+            if local:
+                firmware_path = local
+                print(f"Using local firmware: {local}")
+            elif os.path.isfile(firmware_bin):
                 firmware_path = firmware_bin
                 print(f"Using local PlatformIO build: {firmware_bin}")
             else:
-                cached = _extracted_firmware_path(fv["firmware_bin"])
-                if os.path.isfile(cached):
-                    firmware_path = cached
+                cached_merged = _extracted_firmware_path(merged_bin_name) if merged_bin_name else None
+                cached_app    = _extracted_firmware_path(fv["firmware_bin"])
+                if cached_merged and os.path.isfile(cached_merged):
+                    firmware_path = cached_merged
+                    meta = _read_cache_meta()
+                    print(f"Using cached firmware: {meta.get('tag', '?') if meta else '?'}")
+                elif os.path.isfile(cached_app):
+                    firmware_path = cached_app
                     meta = _read_cache_meta()
                     print(f"Using cached firmware: {meta.get('tag', '?') if meta else '?'}")
                 elif os.path.isfile(merged_fn):
@@ -1392,8 +1467,9 @@ Examples:
                     print("No firmware found!")
                     print()
                     print("Options:")
-                    print(f"  1. Build with PlatformIO first:  pio run -e {pio_env}")
-                    print(f"  2. Specify a file:               python flash.py --board {_board} --file <path>")
+                    print(f"  1. Use firmware from the release ZIP (extract next to flash.py)")
+                    print(f"  2. Build with PlatformIO:  pio run -e {pio_env}")
+                    print(f"  3. Specify a file:  python flash.py --board {_board} --file <path>")
                     sys.exit(1)
 
     # ── Device checks & flash decision ──────────────────────────────────────
