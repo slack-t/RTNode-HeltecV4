@@ -286,12 +286,12 @@ release-all: console-site spiffs-image release-tbeam release-tbeam_sx1262 releas
 # The archive (rtnode_firmware.zip) is the primary distribution artefact consumed
 # by flash.py.  Individual binaries are stored flat inside the zip.
 release-pio:
-	pio run -e heltec_V4_boundary_16mb -e heltec_V3_boundary
+	pio run -e rtnode_heltec_v4 -e rtnode_heltec_v3
 	python3 -c "\
 import zipfile, os, sys; \
 variants = [ \
-    ('.pio/build/heltec_V4_boundary_16mb', 'rnode_firmware_heltec32v4_boundary_16mb.bin'), \
-    ('.pio/build/heltec_V3_boundary',      'rnode_firmware_heltec32v3.bin'), \
+    ('.pio/build/rtnode_heltec_v4', 'rtnode_heltec_v4.bin'), \
+    ('.pio/build/rtnode_heltec_v3', 'rtnode_heltec_v3.bin'), \
 ]; \
 missing = [(d,n) for d,n in variants if not os.path.isfile(os.path.join(d,n))]; \
 [sys.exit(f'Missing: {os.path.join(d,n)}') for d,n in missing]; \

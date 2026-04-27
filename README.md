@@ -88,20 +88,20 @@ git clone https://github.com/jrl290/RTNode-HeltecV4.git
 cd RTNode-HeltecV4
 
 # Build for V4
-pio run -e heltec_V4_boundary_16mb
+pio run -e rtnode_heltec_v4
 
 # Build for V3
-pio run -e heltec_V3_boundary
+pio run -e rtnode_heltec_v3
 
 # Flash (via PlatformIO)
-pio run -e heltec_V4_boundary_16mb -t upload
+pio run -e rtnode_heltec_v4 -t upload
 
 # Or create a merged binary and flash with the utility
 python flash.py --merge-only    # creates merged firmware bin
 python flash.py                 # flash it (auto-detects board)
 
 # Monitor serial output (optional)
-pio device monitor -e heltec_V4_boundary
+pio device monitor -e rtnode_heltec_v4
 ```
 
 ### Option C: Manual esptool Flash
@@ -364,11 +364,11 @@ Set the transport node's **Local TCP Server** to **Enabled** (port 4242).
 | `Display.h` | OLED display layout — transport node status page |
 | `flash.py` | Flash utility — list serial ports, download from GitHub, merge & flash firmware |
 | `Boards.h` | Board variant definitions for V3 and V4 |
-| `platformio.ini` | Build targets: `heltec_V3_boundary`, `heltec_V4_boundary_16mb`, and `heltec_V4_boundary-local` |
+| `platformio.ini` | Build targets: `rtnode_heltec_v3`, `rtnode_heltec_v4`, and `rtnode_heltec_v4-local` |
 
 ### Library Patches
 
-The firmware depends on [microReticulum](https://github.com/attermann/microReticulum) `0.2.4`, automatically fetched by PlatformIO on first build. After the first build, the library sources under `.pio/libdeps/heltec_V4_boundary/microReticulum/src/` need the patches described in "Routing & Memory Customizations" above. Key files modified:
+The firmware depends on [microReticulum](https://github.com/attermann/microReticulum) `0.2.4`, automatically fetched by PlatformIO on first build. After the first build, the library sources under `.pio/libdeps/rtnode_heltec_v4/microReticulum/src/` need the patches described in "Routing & Memory Customizations" above. Key files modified:
 
 | File | Changes |
 |------|---------|

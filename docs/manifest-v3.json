@@ -5,7 +5,7 @@
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "https://github.com/jrl290/RTNode-HeltecV4/releases/latest/download/rnode_firmware_heltec32v3_merged.bin",
+          "path": "https://github.com/jrl290/RTNode-HeltecV4/releases/latest/download/rtnode_heltec_v3_merged.bin",
           "offset": 65536
         }
       ]

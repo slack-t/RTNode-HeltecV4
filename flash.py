@@ -89,10 +89,10 @@ BOARD_PROFILES = {
         "flash_mode": "qio",  # ESP32-S3 PSRAM requires QIO — DIO disables PSRAM
         "flash_variants": {
             "16MB": {
-                "pio_env":      "heltec_V4_boundary_16mb",
-                "build_dir":    ".pio/build/heltec_V4_boundary_16mb",
-                "firmware_bin": "rnode_firmware_heltec32v4_boundary_16mb.bin",
-                "merged_bin":   "rnode_firmware_heltec32v4_boundary_16mb_merged.bin",
+                "pio_env":      "rtnode_heltec_v4",
+                "build_dir":    ".pio/build/rtnode_heltec_v4",
+                "firmware_bin": "rtnode_heltec_v4.bin",
+                "merged_bin":   "rtnode_heltec_v4_merged.bin",
             },
         },
     },
@@ -103,10 +103,10 @@ BOARD_PROFILES = {
         "flash_mode": "dio",
         "flash_variants": {
             "8MB": {
-                "pio_env":      "heltec_V3_boundary",
-                "build_dir":    ".pio/build/heltec_V3_boundary",
-                "firmware_bin": "rnode_firmware_heltec32v3.bin",
-                "merged_bin":   "rnode_firmware_heltec32v3_merged.bin",
+                "pio_env":      "rtnode_heltec_v3",
+                "build_dir":    ".pio/build/rtnode_heltec_v3",
+                "firmware_bin": "rtnode_heltec_v3.bin",
+                "merged_bin":   "rtnode_heltec_v3_merged.bin",
             },
         },
     },
