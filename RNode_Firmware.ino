@@ -787,7 +787,7 @@ void setup() {
 
       HEAD("Registering LoRA Interface...", RNS::LOG_TRACE);
       lora_interface = new LoRaInterface();
-      lora_interface.mode(RNS::Type::Interface::MODE_FULL);
+      lora_interface.mode(RNS::Type::Interface::MODE_ACCESS_POINT);
       RNS::Transport::register_interface(lora_interface);
 
 #ifdef BOUNDARY_MODE
@@ -960,7 +960,7 @@ void setup() {
 #ifdef BOUNDARY_MODE
       HEAD("*** BOUNDARY MODE ACTIVE ***", RNS::LOG_TRACE);
       HEAD("RNS transport mode is ENABLED (boundary)", RNS::LOG_TRACE);
-      HEAD("LoRa Interface: MODE_FULL", RNS::LOG_TRACE);
+      HEAD("LoRa Interface: MODE_ACCESS_POINT", RNS::LOG_TRACE);
       {
         char _bm_info[128];
         if (boundary_state.tcp_mode == 1) {
@@ -971,7 +971,7 @@ void setup() {
           HEAD("TCP Backbone: DISABLED", RNS::LOG_TRACE);
         }
         if (boundary_state.ap_tcp_enabled) {
-          snprintf(_bm_info, sizeof(_bm_info), "Local TCP Server: port %d (MODE_GATEWAY)",
+          snprintf(_bm_info, sizeof(_bm_info), "Local TCP Server: port %d (MODE_ACCESS_POINT)",
                    boundary_state.ap_tcp_port);
           HEAD(_bm_info, RNS::LOG_TRACE);
         }
@@ -2668,10 +2668,10 @@ void sleep_now() {
           headless_led_off();
           headless_led_detach_pwm();
           digitalWrite(LORA_PA_CPS, LOW);
-          #if LORA_PA_KCT8103L
+          if (lora_pa_model == LORA_PA_KCT8103L) {
             // V4.3 KCT8103L: drop CTX so the FEM is in a known low state.
             digitalWrite(LORA_PA_CTX, LOW);
-          #endif
+          }
           digitalWrite(LORA_PA_CSD, LOW);
           digitalWrite(LORA_PA_PWR_EN, LOW);
           digitalWrite(Vext, HIGH);
