@@ -135,7 +135,7 @@ bool sx126x::preInit() {
   pinMode(_ss, OUTPUT);
   digitalWrite(_ss, HIGH);
   
-  #if BOARD_MODEL == BOARD_T3S3 || BOARD_MODEL == BOARD_HELTEC32_V3 || BOARD_MODEL == BOARD_HELTEC32_V4 || BOARD_MODEL == BOARD_TDECK || BOARD_MODEL == BOARD_XIAO_S3
+  #if BOARD_MODEL == BOARD_T3S3 || BOARD_MODEL == BOARD_HELTEC32_V3 || BOARD_MODEL == BOARD_HELTEC32_V4 || BOARD_MODEL == BOARD_HELTEC_TRACKER || BOARD_MODEL == BOARD_TDECK || BOARD_MODEL == BOARD_XIAO_S3
     SPI.begin(pin_sclk, pin_miso, pin_mosi, pin_cs);
   #elif BOARD_MODEL == BOARD_TECHO
     SPI.setPins(pin_miso, pin_sclk, pin_mosi);
@@ -280,9 +280,22 @@ void sx126x::setPacketParams(long preamble_symbols, uint8_t headermode, uint8_t 
   buf[4] = crc;
   buf[5] = 0x00; // standard IQ setting (no inversion)
   buf[6] = 0x00; // unused params
-  buf[7] = 0x00; 
-  buf[8] = 0x00; 
+  buf[7] = 0x00;
+  buf[8] = 0x00;
   executeOpcode(OP_PACKET_PARAMS_6X, buf, 9);
+
+  // SX1262 errata section 15.4: IQ polarity is inverted compared to
+  // SX1276. The SetPacketParams command resets register 0x0736 to an
+  // incorrect default. For standard IQ (no inversion), bit 2 must be
+  // SET after every SetPacketParams call. For inverted IQ, bit 2 must
+  // be CLEARED. Without this fix, LoRa RX demodulation fails silently
+  // while TX continues to work.
+  uint8_t iqreg = readRegister(0x0736);
+  if (buf[5] == 0x00) {
+    writeRegister(0x0736, iqreg | 0x04);
+  } else {
+    writeRegister(0x0736, iqreg & ~0x04);
+  }
 }
 
 void sx126x::reset(void) {
@@ -675,6 +688,8 @@ void sx126x::enableTCXO() {
     #elif BOARD_MODEL == BOARD_TECHO
       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
     #elif BOARD_MODEL == BOARD_HELTEC32_V4
+      uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
+    #elif BOARD_MODEL == BOARD_HELTEC_TRACKER
       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
     #endif
     executeOpcode(OP_DIO3_TCXO_CTRL_6X, buf, 4);
