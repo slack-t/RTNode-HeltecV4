@@ -787,7 +787,7 @@ void setup() {
 
       HEAD("Registering LoRA Interface...", RNS::LOG_TRACE);
       lora_interface = new LoRaInterface();
-      lora_interface.mode(RNS::Type::Interface::MODE_ACCESS_POINT);
+      lora_interface.mode(RNS::Type::Interface::MODE_FULL);
       RNS::Transport::register_interface(lora_interface);
 
 #ifdef BOUNDARY_MODE
@@ -960,7 +960,7 @@ void setup() {
 #ifdef BOUNDARY_MODE
       HEAD("*** BOUNDARY MODE ACTIVE ***", RNS::LOG_TRACE);
       HEAD("RNS transport mode is ENABLED (boundary)", RNS::LOG_TRACE);
-      HEAD("LoRa Interface: MODE_ACCESS_POINT", RNS::LOG_TRACE);
+      HEAD("LoRa Interface: MODE_FULL", RNS::LOG_TRACE);
       {
         char _bm_info[128];
         if (boundary_state.tcp_mode == 1) {
@@ -971,7 +971,7 @@ void setup() {
           HEAD("TCP Backbone: DISABLED", RNS::LOG_TRACE);
         }
         if (boundary_state.ap_tcp_enabled) {
-          snprintf(_bm_info, sizeof(_bm_info), "Local TCP Server: port %d (MODE_ACCESS_POINT)",
+          snprintf(_bm_info, sizeof(_bm_info), "Local TCP Server: port %d (MODE_GATEWAY)",
                    boundary_state.ap_tcp_port);
           HEAD(_bm_info, RNS::LOG_TRACE);
         }
