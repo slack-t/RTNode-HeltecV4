@@ -2668,10 +2668,10 @@ void sleep_now() {
           headless_led_off();
           headless_led_detach_pwm();
           digitalWrite(LORA_PA_CPS, LOW);
-          #if LORA_PA_KCT8103L
+          if (lora_pa_model == LORA_PA_KCT8103L) {
             // V4.3 KCT8103L: drop CTX so the FEM is in a known low state.
             digitalWrite(LORA_PA_CTX, LOW);
-          #endif
+          }
           digitalWrite(LORA_PA_CSD, LOW);
           digitalWrite(LORA_PA_PWR_EN, LOW);
           digitalWrite(Vext, HIGH);

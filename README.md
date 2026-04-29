@@ -243,12 +243,12 @@ The 128×64 OLED is split into two panels:
 
 The firmware runs up to **three RNS interfaces** simultaneously, using different interface modes to control announce propagation and routing behavior:
 
-### LoRa Interface — `MODE_ACCESS_POINT`
+### LoRa Interface — `MODE_FULL`
 
-The LoRa radio operates in **Access Point mode**. In Reticulum, this means:
-- The interface broadcasts its own announces but **blocks rebroadcast of remote announces** from crossing to LoRa
-- This prevents backbone announces (hundreds of remote destinations) from flooding the limited-bandwidth LoRa channel
-- Local nodes discover the transport node directly; the transport node answers path requests for remote destinations from its cache
+The LoRa radio operates in **Full mode**. In Reticulum, this means:
+- Announces propagate freely in both directions — LoRa nodes learn about local TCP clients and backbone destinations, and vice versa
+- Backbone announce flooding on the low-bandwidth LoRa channel is controlled by the BOUNDARY firewall (see TCP Backbone Interface below), not by interface mode
+- All LoRa ↔ local TCP and LoRa ↔ backbone routing works without manual path requests
 
 ### TCP Backbone Interface — `MODE_BOUNDARY`
 
@@ -257,9 +257,9 @@ The TCP backbone connection uses `MODE_BOUNDARY` (`0x20`), a custom transport mo
 - This prevents the path table (limited to 48 entries on ESP32) from being overwhelmed by thousands of backbone destinations
 - When the path table needs to be culled, **backbone-learned paths are evicted first**, preserving locally-needed LoRa paths
 
-### Optional Local TCP Server — `MODE_ACCESS_POINT`
+### Optional Local TCP Server — `MODE_GATEWAY`
 
-If enabled, a TCP server on the WiFi network allows local Reticulum nodes to connect. It also uses Access Point mode, with the same announce filtering as LoRa.
+If enabled, a TCP server on the WiFi network allows local Reticulum nodes to connect. It uses Gateway mode, so announces are forwarded to and from local TCP clients freely (matching standard Reticulum transport node behaviour).
 
 **Implementation details:**
 - Each TCP interface must have a **unique name** to produce a unique interface hash — the backbone uses `"TcpInterface"` and the local server uses `"LocalTcpInterface"`. Without distinct names, both interfaces produce the same hash, causing the interface map lookup to fail when routing packets.
@@ -401,8 +401,8 @@ The firmware depends on [microReticulum](https://github.com/attermann/microRetic
 
 | Resource | Used | Available |
 |----------|------|----------|
-| RAM | ~21.7% | 320 KB |
-| Flash | ~18.4% | 16 MB |
+| RAM | ~21.2% | 320 KB |
+| Flash | ~19.3% | 16 MB |
 | PSRAM | Dynamic | 2 MB |
 
 ## License
